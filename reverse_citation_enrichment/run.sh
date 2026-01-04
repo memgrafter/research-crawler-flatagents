@@ -28,17 +28,16 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-echo "--- arXiv Research Crawler ---"
+echo "--- Reverse Citation Enrichment ---"
 
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-cd "$SCRIPT_DIR"
-
-ARGS_STR="${PASSTHROUGH_ARGS[*]}"
-if [[ "$ARGS_STR" == *"fetch_citations"* ]] && [ -z "$OPENALEX_MAILTO" ]; then
+if [ -z "$OPENALEX_MAILTO" ]; then
     echo "Error: OPENALEX_MAILTO environment variable not set"
     echo "Export it before running: export OPENALEX_MAILTO='you@example.com'"
     exit 1
 fi
+
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
 
 echo "Ensuring virtual environment..."
 if [ ! -d "$VENV_PATH" ]; then
@@ -64,19 +63,19 @@ else
     fi
 fi
 
-echo "  - Installing arxiv_crawler package..."
+echo "  - Installing reverse_citation_enrichment package..."
 if [ "$UPGRADE" = true ]; then
     uv pip install --python "$VENV_PATH/bin/python" -U -e "$SCRIPT_DIR"
 else
     uv pip install --python "$VENV_PATH/bin/python" -e "$SCRIPT_DIR"
 fi
 
-echo "Running crawler..."
+echo "Running enrichment..."
 echo "---"
 if [ "${PASSTHROUGH_ARGS[0]}" = "python" ] && [ "${PASSTHROUGH_ARGS[1]}" = "-m" ]; then
     "$VENV_PATH/bin/python" "${PASSTHROUGH_ARGS[@]:1}"
 else
-    "$VENV_PATH/bin/python" -m arxiv_crawler.main "${PASSTHROUGH_ARGS[@]}"
+    "$VENV_PATH/bin/python" -m reverse_citation_enrichment.main "${PASSTHROUGH_ARGS[@]}"
 fi
 echo "---"
-echo "Crawler complete!"
+echo "Enrichment complete!"

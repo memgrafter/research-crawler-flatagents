@@ -1,0 +1,77 @@
+spec: flatmachine
+spec_version: "0.3.0"
+
+data:
+  name: reverse-citation-enrichment
+
+  context:
+    db_path: "{{ input.db_path }}"
+    since: "{{ input.since }}"
+    until: "{{ input.until }}"
+    limit: "{{ input.limit }}"
+    cooldown_days: "{{ input.cooldown_days | default(30) }}"
+    batch_size: "{{ input.batch_size | default(100) }}"
+    max_pages: "{{ input.max_pages | default(5) }}"
+    concurrency: "{{ input.concurrency | default(5) }}"
+    dry_run: "{{ input.dry_run | default(false) }}"
+    use_doi: "{{ input.use_doi | default(false) }}"
+    provider: "openalex"
+    run_id: null
+    targets: []
+    resolved_targets: []
+    work_cache: []
+    edges: []
+    citation_summaries: []
+    target_count: 0
+    resolved_count: 0
+    edge_count: 0
+    error: null
+
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: init_db
+
+    init_db:
+      action: init_db
+      transitions:
+        - to: select_targets
+
+    select_targets:
+      action: select_targets
+      transitions:
+        - to: resolve_targets
+
+    resolve_targets:
+      action: resolve_targets
+      transitions:
+        - to: fetch_citations
+
+    fetch_citations:
+      action: fetch_citations
+      transitions:
+        - to: upsert_results
+
+    upsert_results:
+      action: upsert_results
+      transitions:
+        - to: record_run
+
+    record_run:
+      action: record_run
+      transitions:
+        - to: done
+
+    done:
+      type: final
+      output:
+        run_id: "{{ context.run_id }}"
+        target_count: "{{ context.target_count }}"
+        resolved_count: "{{ context.resolved_count }}"
+        edge_count: "{{ context.edge_count }}"
+        error: "{{ context.error }}"
+
+metadata:
+  description: "OpenAlex reverse-citation enrichment for the arXiv crawler database"
+  tags: ["citations", "openalex", "sqlite"]

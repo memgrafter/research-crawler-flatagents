@@ -2,6 +2,8 @@
 
 Note: this crawler is a pure workflow (no LLM calls). It uses the arXiv API and
 SQLite only.
+This subproject is a preparation tool; roadmap and scoring docs live in the
+repo root (`README.md`, `DESIGN.md`, `TASKS.md`).
 
 Lean FlatMachine crawler that discovers new LLM-related arXiv papers, stores
 metadata in SQLite, and queues new entries for downstream processing.

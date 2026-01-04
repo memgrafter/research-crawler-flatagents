@@ -1,0 +1,149 @@
+# Minimal defaults for relevance scoring and clustering.
+# Keep this small; override via CLI flags when needed.
+
+embedding:
+  model: sentence-transformers/all-MiniLM-L6-v2
+  normalize: true
+  batch_size: 64
+
+scoring:
+  method: embedding_max
+  anchor_weight: 1.0
+
+clustering:
+  enabled: true
+  method: kmeans
+  k: 80
+  random_state: 42
+  max_iter: 300
+  # Escape hatch: switch method to "hdbscan" and tune below.
+  hdbscan:
+    min_cluster_size: 15
+    min_samples: 5
+    metric: cosine
+
+anchors:
+  - large language model
+  - large language models
+  - language model
+  - language models
+  - foundation model
+  - foundation models
+  - generative model
+  - generative models
+  - transformer
+  - transformers
+  - attention mechanism
+  - self attention
+  - multi head attention
+  - decoder only
+  - encoder decoder
+  - sequence to sequence
+  - seq2seq
+  - autoregressive
+  - causal language model
+  - masked language model
+  - pretraining
+  - pre training
+  - self supervised
+  - self supervision
+  - instruction tuning
+  - instruction following
+  - instruction finetuning
+  - fine tuning
+  - finetuning
+  - parameter efficient tuning
+  - peft
+  - lora
+  - prefix tuning
+  - prompt tuning
+  - in context learning
+  - few shot learning
+  - zero shot learning
+  - chain of thought
+  - chain of reasoning
+  - reasoning
+  - deliberate reasoning
+  - step by step reasoning
+  - tool use
+  - tool calling
+  - function calling
+  - agent
+  - agents
+  - autonomous agent
+  - planning agent
+  - react agent
+  - multi agent
+  - retrieval augmented generation
+  - rag
+  - vector database
+  - embedding model
+  - text embedding
+  - semantic search
+  - alignment
+  - rlhf
+  - reward model
+  - preference model
+  - direct preference optimization
+  - dpo
+  - policy optimization
+  - safety alignment
+  - model safety
+  - toxicity mitigation
+  - hallucination
+  - hallucination reduction
+  - truthfulness
+  - factuality
+  - evaluation benchmark
+  - llm evaluation
+  - benchmark suite
+  - instruction benchmark
+  - tokenization
+  - byte pair encoding
+  - bpe
+  - sentencepiece
+  - context window
+  - long context
+  - context length
+  - scaling law
+  - scaling laws
+  - mixture of experts
+  - moe
+  - sparse attention
+  - kv cache
+  - inference acceleration
+  - distillation
+  - knowledge distillation
+  - quantization
+  - pruning
+  - compression
+  - multimodal
+  - vision language model
+  - vlm
+  - audio language model
+  - speech language model
+  - diffusion model
+  - diffusion models
+  - latent diffusion
+  - text to image
+  - text to video
+  - video diffusion
+  - image generation
+  - generative video
+  - code generation
+  - program synthesis
+  - llm coding
+  - structured output
+  - json schema
+  - toolformer
+  - retriever
+  - reranker
+  - prompt engineering
+  - system prompt
+  - chat model
+  - conversational agent
+  - instruction dataset
+  - human feedback
+  - synthetic data
+  - data mixture
+  - model editing

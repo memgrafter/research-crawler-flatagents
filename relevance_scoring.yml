@@ -1,0 +1,414 @@
+# Improved configuration for LLM relevance scoring
+embedding:
+  # Upgrade options (choose one based on your needs):
+  # - dunzhang/stella_en_400M_v5 (best performance/size ratio, requires trust_remote_code=True)
+  # - Qwen/Qwen3-Embedding-0.6B (top MTEB performance, 639MB)
+  # - BAAI/bge-m3 (versatile, multilingual, 1GB)
+  # - sentence-transformers/all-mpnet-base-v2 (drop-in upgrade, 420MB)
+  model: dunzhang/stella_en_400M_v5
+  trust_remote_code: true
+  model_kwargs:
+    attn_implementation: eager
+  config_kwargs:
+    attn_implementation: eager
+    use_memory_efficient_attention: false
+    unpad_inputs: false
+  normalize: true
+  batch_size: 64
+  # For Stella models, use prompts for better performance:
+  query_prompt: "Instruct: Given a web search query, retrieve relevant passages that answer the query.\nQuery: "
+  
+scoring:
+  method: embedding_max
+  anchor_weight: 1.0
+  
+clustering:
+  enabled: true
+  method: kmeans
+  k: 80
+  random_state: 42
+  max_iter: 300
+  hdbscan:
+    min_cluster_size: 15
+    min_samples: 5
+    metric: cosine
+
+anchors:
+  # Core LLM Terminology
+  - large language model
+  - large language models
+  - language model
+  - language models
+  - foundation model
+  - foundation models
+  - generative model
+  - generative models
+  - generative ai
+  - generative artificial intelligence
+  
+  # Architectures & Models
+  - transformer
+  - transformers
+  - attention mechanism
+  - self attention
+  - multi head attention
+  - cross attention
+  - flash attention
+  - grouped query attention
+  - decoder only
+  - encoder decoder
+  - encoder only
+  - sequence to sequence
+  - seq2seq
+  - autoregressive
+  - causal language model
+  - masked language model
+  - bert
+  - gpt
+  - t5
+  - llama
+  - mistral
+  - mixtral
+  - gemini
+  - claude
+  - palm
+  - falcon
+  - mpt
+  - phi
+  
+  # Training & Pretraining
+  - pretraining
+  - pre training
+  - self supervised
+  - self supervision
+  - contrastive learning
+  - next token prediction
+  - language modeling objective
+  - curriculum learning
+  - continual learning
+  - multi task learning
+  - transfer learning
+  - data mixture
+  - training data
+  - training corpus
+  - common crawl
+  - the pile
+  - redpajama
+  - slimpajama
+  
+  # Fine-tuning & Adaptation
+  - instruction tuning
+  - instruction following
+  - instruction finetuning
+  - fine tuning
+  - finetuning
+  - supervised fine tuning
+  - sft
+  - parameter efficient tuning
+  - peft
+  - lora
+  - qlora
+  - adapter
+  - prefix tuning
+  - prompt tuning
+  - p tuning
+  - ia3
+  - model editing
+  - model merging
+  - model soup
+  
+  # Prompting & In-Context Learning
+  - in context learning
+  - few shot learning
+  - zero shot learning
+  - one shot learning
+  - chain of thought
+  - cot
+  - chain of reasoning
+  - reasoning
+  - deliberate reasoning
+  - step by step reasoning
+  - tree of thoughts
+  - self consistency
+  - prompt engineering
+  - prompt design
+  - system prompt
+  - prompt template
+  - meta prompting
+  
+  # Agents & Tool Use
+  - tool use
+  - tool calling
+  - function calling
+  - api calling
+  - agent
+  - agents
+  - autonomous agent
+  - planning agent
+  - react agent
+  - reflexion
+  - multi agent
+  - multi agent system
+  - agent framework
+  - langchain
+  - autogpt
+  - toolformer
+  
+  # RAG & Retrieval
+  - retrieval augmented generation
+  - rag
+  - vector database
+  - vector store
+  - embedding model
+  - text embedding
+  - semantic search
+  - dense retrieval
+  - sparse retrieval
+  - hybrid retrieval
+  - retriever
+  - reranker
+  - reranking
+  - similarity search
+  - nearest neighbor
+  - faiss
+  - chromadb
+  - pinecone
+  - weaviate
+  - qdrant
+  
+  # Alignment & Safety
+  - alignment
+  - rlhf
+  - reinforcement learning from human feedback
+  - rlaif
+  - reinforcement learning from ai feedback
+  - reward model
+  - reward modeling
+  - preference model
+  - direct preference optimization
+  - dpo
+  - policy optimization
+  - ppo
+  - proximal policy optimization
+  - constitutional ai
+  - safety alignment
+  - model safety
+  - ai safety
+  - toxicity mitigation
+  - toxicity detection
+  - bias mitigation
+  - fairness
+  - jailbreaking
+  - adversarial robustness
+  - red teaming
+  - harmlessness
+  - helpfulness
+  - honesty
+  
+  # Model Behavior & Issues
+  - hallucination
+  - hallucination reduction
+  - hallucination detection
+  - truthfulness
+  - factuality
+  - factual accuracy
+  - calibration
+  - uncertainty estimation
+  - confabulation
+  - grounding
+  
+  # Evaluation
+  - evaluation benchmark
+  - llm evaluation
+  - benchmark suite
+  - instruction benchmark
+  - mmlu
+  - hellaswag
+  - truthfulqa
+  - humaneval
+  - gsm8k
+  - big bench
+  - lm eval harness
+  - chatbot arena
+  - mtbench
+  - alpaca eval
+  
+  # Tokenization & Context
+  - tokenization
+  - tokenizer
+  - byte pair encoding
+  - bpe
+  - sentencepiece
+  - wordpiece
+  - unigram
+  - context window
+  - long context
+  - context length
+  - position encoding
+  - positional embedding
+  - rope
+  - rotary position embedding
+  - alibi
+  - relative position
+  
+  # Scaling & Architecture
+  - scaling law
+  - scaling laws
+  - emergent abilities
+  - mixture of experts
+  - moe
+  - sparse mixture of experts
+  - expert routing
+  - gating network
+  - sparse attention
+  - local attention
+  - sliding window attention
+  - block sparse attention
+  
+  # Inference & Optimization
+  - kv cache
+  - inference acceleration
+  - inference optimization
+  - speculative decoding
+  - speculative sampling
+  - model parallelism
+  - tensor parallelism
+  - pipeline parallelism
+  - distributed inference
+  - batching
+  - continuous batching
+  - vllm
+  - tensorrt
+  - onnx
+  
+  # Model Compression
+  - distillation
+  - knowledge distillation
+  - quantization
+  - post training quantization
+  - quantization aware training
+  - int8
+  - int4
+  - fp16
+  - bfloat16
+  - gptq
+  - awq
+  - gguf
+  - ggml
+  - pruning
+  - compression
+  - model optimization
+  
+  # Multimodal
+  - multimodal
+  - vision language model
+  - vlm
+  - image understanding
+  - visual question answering
+  - audio language model
+  - speech language model
+  - speech recognition
+  - text to speech
+  - voice assistant
+  - omnimodal
+  
+  # Generation Tasks
+  - diffusion model
+  - diffusion models
+  - latent diffusion
+  - stable diffusion
+  - text to image
+  - text to video
+  - image to image
+  - image to text
+  - video diffusion
+  - image generation
+  - generative video
+  - video generation
+  - image synthesis
+  
+  # Code & Programming
+  - code generation
+  - code synthesis
+  - program synthesis
+  - llm coding
+  - code completion
+  - code understanding
+  - copilot
+  - code llm
+  - code model
+  - codex
+  - starcoder
+  - code interpreter
+  
+  # Structured Generation
+  - structured output
+  - structured generation
+  - json mode
+  - json schema
+  - constrained generation
+  - grammar based generation
+  - output parsing
+  - format enforcement
+  
+  # Applications & Use Cases
+  - chat model
+  - chatbot
+  - conversational agent
+  - conversational ai
+  - dialogue system
+  - question answering
+  - summarization
+  - text summarization
+  - translation
+  - machine translation
+  - sentiment analysis
+  - text classification
+  - named entity recognition
+  - information extraction
+  - knowledge graph
+  
+  # Data & Datasets
+  - instruction dataset
+  - instruction data
+  - human feedback
+  - human annotation
+  - synthetic data
+  - synthetic generation
+  - data augmentation
+  - data filtering
+  - data quality
+  - dataset curation
+  - alpaca dataset
+  - dolly dataset
+  - sharegpt
+  - ultrachat
+  
+  # Training Infrastructure
+  - distributed training
+  - deepspeed
+  - megatron
+  - fsdp
+  - fully sharded data parallel
+  - gradient accumulation
+  - mixed precision training
+  - gradient checkpointing
+  - activation checkpointing
+  - zero optimizer
+  - communication overhead
+  
+  # Emerging & Advanced Topics
+  - world model
+  - world modeling
+  - model based reasoning
+  - causal reasoning
+  - symbolic reasoning
+  - neurosymbolic
+  - mechanistic interpretability
+  - interpretability
+  - explainability
+  - activation steering
+  - representation engineering
+  - in context learning theory
+  - mesa optimization
+  - instrumental convergence

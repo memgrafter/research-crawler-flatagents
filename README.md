@@ -7,7 +7,15 @@ Super-lean project overview: build a FlatMachine-based crawler that regularly di
 - **SQLite persistence**: store paper metadata, fetch history, and processing status.
 - **Cron execution**: the crawler runs on a schedule and is idempotent.
 
-Implementation lives in `arxiv_crawler/` (config, schema, and runnable entry point).
+Implementation lives in:
+- `arxiv_crawler/` (crawler, schema, and runnable entry point)
+- `reverse_citation_enrichment/` (OpenAlex cited-by enrichment job)
+- `relevance_scoring/` (local embedding-based FMR scoring)
+
+## Design Principles
+- Keep it minimal: batch jobs and small tables, no heavy services.
+- Reuse escape hatches: `details_json`/`raw_json` columns and a small config file for swapping components.
+- Default to stable, cheap heuristics; only add complexity when it measurably helps.
 
 Quick run:
 
@@ -17,6 +25,11 @@ cd arxiv_crawler
 ```
 
 ## Project Plan
+
+### Relevance + Prioritization Roadmap (Planned)
+1. Define and score "Foundation Model Relevance (FMR)" to capture AI/LLM/transformer/deep-learning topicality, with cluster-aware comparative relevance (e.g., superseded work).
+2. Pull backreferences/citations and compute a popularity signal weighted by the relevance of citing papers.
+3. Combine signals to prioritize the top-K papers in `paper_queue`, routing them to read vs reproduce based on research type and estimated cost.
 
 ### Phase 1 — Discovery & Data Model
 Tasks:
@@ -45,3 +58,10 @@ Tasks:
 ## Notes
 - This repository already contains example FlatMachine projects used for reference and experimentation.
 - Future FlatMachines will be added as the knowledge-base workflow expands.
+- Future opportunity: OpenAlex `locations`/`best_oa_location` can help recover arXiv links and PDFs when DOI is missing.
+
+## Docs and Config
+- `DESIGN.md`: relevance scoring + prioritization design.
+- `TASKS.md`: task list for implementation.
+- `REVERSE_CITATION_ENRICHMENT_PLAN.md`: citation enrichment plan.
+- `relevance_scoring.yml`: starter defaults for embeddings + clustering.
