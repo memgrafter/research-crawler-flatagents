@@ -6,11 +6,16 @@ VENV_PATH=".venv"
 
 # --- Parse Arguments ---
 LOCAL_INSTALL=false
+UPGRADE=false
 PASSTHROUGH_ARGS=()
 while [[ $# -gt 0 ]]; do
     case $1 in
         --local|-l)
             LOCAL_INSTALL=true
+            shift
+            ;;
+        --upgrade|-u)
+            UPGRADE=true
             shift
             ;;
         *)
@@ -38,14 +43,26 @@ fi
 echo "Installing dependencies..."
 if [ "$LOCAL_INSTALL" = true ]; then
     echo "  - Installing flatagents from local source..."
-    uv pip install --python "$VENV_PATH/bin/python" -e "$SCRIPT_DIR/../..[litellm]"
+    if [ "$UPGRADE" = true ]; then
+        uv pip install --python "$VENV_PATH/bin/python" -U -e "$SCRIPT_DIR/../..[litellm]"
+    else
+        uv pip install --python "$VENV_PATH/bin/python" -e "$SCRIPT_DIR/../..[litellm]"
+    fi
 else
     echo "  - Installing flatagents from PyPI..."
-    uv pip install --python "$VENV_PATH/bin/python" "flatagents[litellm]"
+    if [ "$UPGRADE" = true ]; then
+        uv pip install --python "$VENV_PATH/bin/python" -U "flatagents[litellm]"
+    else
+        uv pip install --python "$VENV_PATH/bin/python" "flatagents[litellm]"
+    fi
 fi
 
 echo "  - Installing research_paper_analysis package..."
-uv pip install --python "$VENV_PATH/bin/python" -e "$SCRIPT_DIR"
+if [ "$UPGRADE" = true ]; then
+    uv pip install --python "$VENV_PATH/bin/python" -U -e "$SCRIPT_DIR"
+else
+    uv pip install --python "$VENV_PATH/bin/python" -e "$SCRIPT_DIR"
+fi
 
 # Run
 echo "Running demo..."
