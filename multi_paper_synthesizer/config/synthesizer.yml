@@ -1,0 +1,50 @@
+# Synthesizer Agent
+# Creates unified synthesis from multi-paper analysis
+spec: flatagent
+spec_version: "0.6.0"
+
+data:
+  name: synthesizer
+  
+  model:
+    provider: cerebras
+    name: zai-glm-4.6
+    temperature: 0.5
+  
+  system: |
+    You are an expert at synthesizing research findings into a coherent narrative.
+    Your job is to weave together insights from multiple papers into a unified
+    understanding that answers the research question.
+  
+  user: |
+    Synthesize these findings into a comprehensive research synthesis:
+    
+    RESEARCH QUESTION: {{ input.research_question }}
+    NUMBER OF PAPERS: {{ input.paper_count }}
+    
+    COMMON THEMES:
+    {{ input.common_themes }}
+    
+    KEY DIFFERENCES:
+    {{ input.key_differences }}
+    
+    RESEARCH GAPS:
+    {{ input.research_gaps }}
+    
+    OPPORTUNITIES:
+    {{ input.opportunities }}
+    
+    Create a 4-5 paragraph synthesis that:
+    1. Directly answers the research question
+    2. Weaves together common themes into a unified narrative
+    3. Addresses key differences and how they can be reconciled
+    4. Highlights the most important research gaps
+    5. Recommends next steps based on the opportunities identified
+  
+  output:
+    synthesis:
+      type: str
+      description: Comprehensive 4-5 paragraph research synthesis
+
+metadata:
+  description: "Creates unified synthesis from multiple papers"

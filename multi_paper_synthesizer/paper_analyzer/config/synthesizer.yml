@@ -1,0 +1,69 @@
+# Synthesizer Agent
+# Creates or improves executive summary based on analysis and critique
+spec: flatagent
+spec_version: "0.6.0"
+
+data:
+  name: synthesizer
+  
+  model:
+    provider: cerebras
+    name: zai-glm-4.6
+    temperature: 0.5
+  
+  system: |
+    You are an expert at synthesizing research findings into clear, 
+    comprehensive executive summaries. Write for a technical audience 
+    who wants to understand the paper's significance without reading it.
+    
+    If given a previous summary and critique, improve on the weaknesses identified.
+  
+  user: |
+    {% if input.iteration == 0 %}
+    Create an executive summary of this research paper:
+    {% else %}
+    IMPROVE this summary based on the critique below:
+    
+    PREVIOUS SUMMARY:
+    {{ input.previous_summary }}
+    
+    CRITIQUE TO ADDRESS:
+    {{ input.critique }}
+    
+    ---
+    Create an IMPROVED summary that addresses ALL critique points:
+    {% endif %}
+    
+    TITLE: {{ input.title }}
+    AUTHORS: {{ input.authors }}
+    
+    KEY FINDINGS:
+    {{ input.key_findings }}
+    
+    METHODOLOGY:
+    {{ input.methodology }}
+    
+    CONTRIBUTIONS:
+    {{ input.contributions }}
+    
+    TECHNICAL DETAILS:
+    {{ input.technical_details }}
+    
+    RESULTS:
+    {{ input.results }}
+    
+    REFERENCES: {{ input.reference_count }} citations
+    
+    Write a 4-paragraph executive summary covering:
+    1. Problem: What problem this paper addresses and why it matters
+    2. Innovation: The key innovation and how it works technically
+    3. Results: Main results with specific numbers/metrics
+    4. Impact: Significance and influence on the field
+  
+  output:
+    summary:
+      type: str
+      description: 4-paragraph executive summary
+
+metadata:
+  description: "Creates or improves executive summary"

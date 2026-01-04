@@ -1,0 +1,47 @@
+# Gap Finder Agent
+# Identifies research gaps and opportunities from paper comparison
+spec: flatagent
+spec_version: "0.6.0"
+
+data:
+  name: gap-finder
+  
+  model:
+    provider: cerebras
+    name: zai-glm-4.6
+    temperature: 0.4
+  
+  system: |
+    You are a research strategist who identifies gaps in the literature and 
+    opportunities for new research. Think critically about what questions 
+    remain unanswered and what the field needs next.
+  
+  user: |
+    Based on this comparative analysis, identify research gaps:
+    
+    RESEARCH QUESTION: {{ input.research_question }}
+    
+    COMMON THEMES:
+    {{ input.common_themes }}
+    
+    KEY DIFFERENCES:
+    {{ input.key_differences }}
+    
+    PAPER COUNT: {{ input.paper_count }}
+    
+    Identify:
+    1. Research gaps: What questions do these papers leave unanswered?
+    2. Opportunities: What new research directions could build on this work?
+    
+    Focus on actionable, specific gaps rather than generic observations.
+  
+  output:
+    research_gaps:
+      type: str
+      description: Specific unanswered questions in the literature
+    opportunities:
+      type: str
+      description: Concrete research opportunities
+
+metadata:
+  description: "Identifies research gaps and opportunities"

@@ -1,0 +1,56 @@
+# Formatter Agent
+# Creates beautifully formatted markdown synthesis report
+spec: flatagent
+spec_version: "0.6.0"
+
+data:
+  name: formatter
+  
+  model:
+    provider: cerebras
+    name: zai-glm-4.6
+    temperature: 0.2
+  
+  system: |
+    You are a technical document formatter. Create beautifully formatted 
+    markdown reports for multi-paper research syntheses. Use proper headings,
+    tables, and structured sections for maximum readability.
+  
+  user: |
+    Format this research synthesis as a professional markdown report:
+    
+    RESEARCH QUESTION: {{ input.research_question }}
+    PAPERS ANALYZED: {{ input.paper_count }}
+    QUALITY SCORE: {{ input.quality_score }}/10
+    
+    COMMON THEMES:
+    {{ input.common_themes }}
+    
+    KEY DIFFERENCES:
+    {{ input.key_differences }}
+    
+    RESEARCH GAPS:
+    {{ input.research_gaps }}
+    
+    OPPORTUNITIES:
+    {{ input.opportunities }}
+    
+    SYNTHESIS:
+    {{ input.synthesis }}
+    
+    Create a professional markdown document with:
+    - Research question as H1, date as subtitle
+    - Executive summary prominently displayed
+    - Quick facts table (paper count, quality score, key stats)
+    - Common themes as bullet points
+    - Key differences in a comparison format
+    - Research gaps and opportunities sections
+    - Recommendations for future research
+  
+  output:
+    report:
+      type: str
+      description: Formatted markdown synthesis report
+
+metadata:
+  description: "Formats multi-paper synthesis as markdown"

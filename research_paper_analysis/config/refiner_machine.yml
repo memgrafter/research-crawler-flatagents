@@ -1,0 +1,91 @@
+# Refiner Child Machine (Self-Judging Loop)
+# Creates and iteratively improves summary until quality threshold met
+# Contains 2 agents: synthesizer (creates summary) and critic (judges quality)
+# Loops up to 3 times until quality_score >= 8
+
+spec: flatmachine
+spec_version: "0.3.0"
+
+data:
+  name: refiner
+  
+  context:
+    # Input from parent
+    title: "{{ input.title }}"
+    authors: "{{ input.authors }}"
+    key_findings: "{{ input.key_findings }}"
+    methodology: "{{ input.methodology }}"
+    contributions: "{{ input.contributions }}"
+    technical_details: "{{ input.technical_details }}"
+    results: "{{ input.results }}"
+    reference_count: "{{ input.reference_count }}"
+    # Refinement state
+    summary: null
+    critique: null
+    quality_score: 0
+    iteration: 0
+  
+  agents:
+    synthesizer: ./synthesizer.yml
+    critic: ./critic.yml
+  
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: synthesize
+
+    # Generate or improve summary
+    synthesize:
+      agent: synthesizer
+      execution:
+        type: retry
+        backoffs: [2, 8]
+      input:
+        title: "{{ context.title }}"
+        authors: "{{ context.authors }}"
+        key_findings: "{{ context.key_findings }}"
+        methodology: "{{ context.methodology }}"
+        contributions: "{{ context.contributions }}"
+        technical_details: "{{ context.technical_details }}"
+        results: "{{ context.results }}"
+        reference_count: "{{ context.reference_count }}"
+        previous_summary: "{{ context.summary }}"
+        critique: "{{ context.critique }}"
+        iteration: "{{ context.iteration }}"
+      output_to_context:
+        summary: "{{ output.summary }}"
+        iteration: "{{ context.iteration + 1 }}"
+      transitions:
+        - to: critique
+
+    # Judge the summary quality
+    critique:
+      agent: critic
+      execution:
+        type: retry
+        backoffs: [2, 8]
+      input:
+        title: "{{ context.title }}"
+        summary: "{{ context.summary }}"
+        key_findings: "{{ context.key_findings }}"
+        methodology: "{{ context.methodology }}"
+      output_to_context:
+        quality_score: "{{ output.quality_score }}"
+        critique: "{{ output.critique }}"
+      transitions:
+        # Accept if quality >= 8 or max iterations (3) reached
+        - condition: "context.quality_score >= 8 or context.iteration >= 3"
+          to: done
+        # Otherwise, refine again
+        - to: synthesize
+
+    done:
+      type: final
+      output:
+        summary: "{{ context.summary }}"
+        quality_score: "{{ context.quality_score }}"
+        iterations: "{{ context.iteration }}"
+
+metadata:
+  description: "Self-judging refinement loop for summary quality"

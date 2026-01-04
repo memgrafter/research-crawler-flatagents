@@ -1,0 +1,163 @@
+# Multi-Paper Research Synthesizer (Parent Machine)
+# Meta-example: Orchestrates multiple paper analyses and synthesizes insights
+# Demonstrates: HSM with dynamic child invocations, cross-document synthesis
+
+spec: flatmachine
+spec_version: "0.3.0"
+
+data:
+  name: multi-paper-synthesizer
+  
+  context:
+    # Input papers (list of parsed paper objects)
+    papers: "{{ input.papers | tojson }}"
+    paper_count: "{{ input.paper_count }}"
+    research_question: "{{ input.research_question }}"
+    # Analysis results (one per paper)
+    paper_analyses: []
+    # Synthesis results
+    common_themes: null
+    key_differences: null
+    research_gaps: null
+    synthesis_report: null
+    quality_score: 0
+  
+  agents:
+    comparator: ./comparator.yml
+    gap_finder: ./gap_finder.yml
+    synthesizer: ./synthesizer.yml
+    critic: ./critic.yml
+    formatter: ./formatter.yml
+  
+  # Reference to the paper analyzer child machine
+  machines:
+    paper_analyzer: ../paper_analyzer/config/machine.yml
+  
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: analyze_papers
+
+    # Step 1: Analyze each paper using the paper_analyzer child machine
+    # This will be called in a loop by the orchestrator
+    analyze_papers:
+      machine: paper_analyzer
+      # Input will be provided dynamically by the orchestrator
+      input:
+        title: "{{ context.current_paper.title }}"
+        authors: "{{ context.current_paper.authors }}"
+        abstract: "{{ context.current_paper.abstract }}"
+        sections: "{{ context.current_paper.sections }}"
+        section_text: "{{ context.current_paper.section_text }}"
+        reference_count: "{{ context.current_paper.reference_count }}"
+        references_sample: "{{ context.current_paper.references_sample | tojson }}"
+      output_to_context:
+        current_analysis: "{{ output }}"
+      transitions:
+        - to: compare_papers
+
+    # Step 2: Compare findings across all papers
+    compare_papers:
+      agent: comparator
+      execution:
+        type: retry
+        backoffs: [2, 8]
+      input:
+        research_question: "{{ context.research_question }}"
+        analyses: "{{ context.paper_analyses | tojson }}"
+        paper_count: "{{ context.paper_count }}"
+      output_to_context:
+        common_themes: "{{ output.common_themes }}"
+        key_differences: "{{ output.key_differences }}"
+      transitions:
+        - to: find_gaps
+
+    # Step 3: Identify research gaps and opportunities
+    find_gaps:
+      agent: gap_finder
+      execution:
+        type: retry
+        backoffs: [2, 8]
+      input:
+        research_question: "{{ context.research_question }}"
+        common_themes: "{{ context.common_themes }}"
+        key_differences: "{{ context.key_differences }}"
+        analyses: "{{ context.paper_analyses | tojson }}"
+      output_to_context:
+        research_gaps: "{{ output.research_gaps }}"
+        opportunities: "{{ output.opportunities }}"
+      transitions:
+        - to: synthesize
+
+    # Step 4: Create synthesis report
+    synthesize:
+      agent: synthesizer
+      execution:
+        type: retry
+        backoffs: [2, 8]
+      input:
+        research_question: "{{ context.research_question }}"
+        paper_count: "{{ context.paper_count }}"
+        common_themes: "{{ context.common_themes }}"
+        key_differences: "{{ context.key_differences }}"
+        research_gaps: "{{ context.research_gaps }}"
+        opportunities: "{{ context.opportunities }}"
+      output_to_context:
+        synthesis_draft: "{{ output.synthesis }}"
+      transitions:
+        - to: critique
+
+    # Step 5: Self-judging critique
+    critique:
+      agent: critic
+      execution:
+        type: retry
+        backoffs: [2, 8]
+      input:
+        research_question: "{{ context.research_question }}"
+        synthesis: "{{ context.synthesis_draft }}"
+        paper_count: "{{ context.paper_count }}"
+      output_to_context:
+        quality_score: "{{ output.quality_score }}"
+        critique: "{{ output.critique }}"
+      transitions:
+        # If quality is good, format and finish
+        - condition: "context.quality_score >= 8"
+          to: format
+        # Otherwise loop back to improve
+        - to: synthesize
+
+    # Step 6: Format final report
+    format:
+      agent: formatter
+      execution:
+        type: retry
+        backoffs: [2, 8]
+      input:
+        research_question: "{{ context.research_question }}"
+        paper_count: "{{ context.paper_count }}"
+        common_themes: "{{ context.common_themes }}"
+        key_differences: "{{ context.key_differences }}"
+        research_gaps: "{{ context.research_gaps }}"
+        opportunities: "{{ context.opportunities }}"
+        synthesis: "{{ context.synthesis_draft }}"
+        quality_score: "{{ context.quality_score }}"
+      output_to_context:
+        synthesis_report: "{{ output.report }}"
+      transitions:
+        - to: done
+
+    done:
+      type: final
+      output:
+        paper_count: "{{ context.paper_count }}"
+        common_themes: "{{ context.common_themes }}"
+        key_differences: "{{ context.key_differences }}"
+        research_gaps: "{{ context.research_gaps }}"
+        synthesis_report: "{{ context.synthesis_report }}"
+        quality_score: "{{ context.quality_score }}"
+
+metadata:
+  description: "Multi-paper research synthesizer with HSM orchestration"
+  tags: ["hsm", "multi-document", "synthesis", "meta-example"]
