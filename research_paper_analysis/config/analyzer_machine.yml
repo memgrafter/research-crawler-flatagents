@@ -1,0 +1,74 @@
+# Analyzer Child Machine
+# Extracts key information from paper abstract and sections
+# Contains 2 agents: abstract_analyzer and section_analyzer
+
+spec: flatmachine
+spec_version: "0.3.0"
+
+data:
+  name: analyzer
+  
+  context:
+    title: "{{ input.title }}"
+    authors: "{{ input.authors }}"
+    abstract: "{{ input.abstract }}"
+    section_text: "{{ input.section_text }}"
+    # Analysis outputs
+    key_findings: null
+    methodology: null
+    contributions: null
+    technical_details: null
+    results: null
+  
+  agents:
+    abstract_analyzer: ./abstract_analyzer.yml
+    section_analyzer: ./section_analyzer.yml
+  
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: analyze_abstract
+
+    analyze_abstract:
+      agent: abstract_analyzer
+      execution:
+        type: retry
+        backoffs: [2, 8]
+      input:
+        title: "{{ context.title }}"
+        authors: "{{ context.authors }}"
+        abstract: "{{ context.abstract }}"
+      output_to_context:
+        key_findings: "{{ output.key_findings }}"
+        methodology: "{{ output.methodology }}"
+        contributions: "{{ output.contributions }}"
+      transitions:
+        - to: analyze_sections
+
+    analyze_sections:
+      agent: section_analyzer
+      execution:
+        type: retry
+        backoffs: [2, 8]
+      input:
+        title: "{{ context.title }}"
+        key_findings: "{{ context.key_findings }}"
+        section_text: "{{ context.section_text }}"
+      output_to_context:
+        technical_details: "{{ output.technical_details }}"
+        results: "{{ output.results }}"
+      transitions:
+        - to: done
+
+    done:
+      type: final
+      output:
+        key_findings: "{{ context.key_findings }}"
+        methodology: "{{ context.methodology }}"
+        contributions: "{{ context.contributions }}"
+        technical_details: "{{ context.technical_details }}"
+        results: "{{ context.results }}"
+
+metadata:
+  description: "Child machine for paper content analysis"

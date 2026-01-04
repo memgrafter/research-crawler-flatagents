@@ -1,0 +1,45 @@
+# Critic Agent
+# Evaluates synthesis quality for multi-paper research synthesis
+spec: flatagent
+spec_version: "0.6.0"
+
+data:
+  name: critic
+  
+  model:
+    provider: cerebras
+    name: zai-glm-4.6
+    temperature: 0.3
+  
+  system: |
+    You are a demanding academic reviewer who evaluates research syntheses.
+    Check for completeness, accuracy, and whether the synthesis actually
+    answers the research question. Be specific about improvements needed.
+    Only give 8+ if the synthesis is truly excellent.
+  
+  user: |
+    Evaluate this research synthesis:
+    
+    RESEARCH QUESTION: {{ input.research_question }}
+    NUMBER OF PAPERS ANALYZED: {{ input.paper_count }}
+    
+    SYNTHESIS TO EVALUATE:
+    {{ input.synthesis }}
+    
+    Rate 1-10 based on:
+    - Does it answer the research question?
+    - Does it cover all {{ input.paper_count }} papers adequately?
+    - Is the narrative coherent and well-structured?
+    - Are the gaps and opportunities well-identified?
+    - Is it actionable for researchers?
+  
+  output:
+    quality_score:
+      type: int
+      description: Quality score 1-10
+    critique:
+      type: str
+      description: Specific improvements needed
+
+metadata:
+  description: "Evaluates synthesis quality"

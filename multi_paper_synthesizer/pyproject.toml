@@ -1,0 +1,16 @@
+[project]
+name = "multi_paper_synthesizer"
+version = "0.1.0"
+description = "Multi-paper research synthesizer with HSM orchestration"
+dependencies = ["flatagents[litellm]", "pypdf", "httpx"]
+requires-python = ">=3.10"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[project.scripts]
+multi-paper-synth = "multi_paper_synthesizer.main:main"

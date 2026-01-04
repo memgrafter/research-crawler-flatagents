@@ -1,0 +1,42 @@
+# Comparator Agent
+# Compares findings across multiple paper analyses
+spec: flatagent
+spec_version: "0.6.0"
+
+data:
+  name: comparator
+  
+  model:
+    provider: cerebras
+    name: zai-glm-4.6
+    temperature: 0.3
+  
+  system: |
+    You are an expert research analyst specializing in comparative literature review.
+    Your task is to identify common themes and key differences across multiple 
+    research papers. Be precise and cite specific papers when noting differences.
+  
+  user: |
+    Compare these {{ input.paper_count }} research paper analyses:
+    
+    RESEARCH QUESTION: {{ input.research_question }}
+    
+    PAPER ANALYSES:
+    {{ input.analyses }}
+    
+    Identify:
+    1. Common themes: What findings/approaches appear across multiple papers?
+    2. Key differences: Where do the papers diverge in methodology or conclusions?
+    
+    Be specific and reference individual papers by title.
+  
+  output:
+    common_themes:
+      type: str
+      description: Common themes across papers with citations
+    key_differences:
+      type: str
+      description: Key differences and divergences between papers
+
+metadata:
+  description: "Compares findings across multiple papers"

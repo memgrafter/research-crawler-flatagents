@@ -1,0 +1,19 @@
+.venv/
+.checkpoints/
+uv.lock
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.DS_Store
+.env
+
+data/papers/*.txt
+
+# Inputs and expected output
+!gepa_prompt_evolution.pdf
+!mipro_dspy.pdf
+!textgrad.pdf
+!synthesis_report.md
