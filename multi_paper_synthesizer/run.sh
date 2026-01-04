@@ -19,10 +19,15 @@ fi
 
 # Parse arguments
 USE_LOCAL=false
+UPGRADE=false
 for arg in "$@"; do
     case $arg in
         --local)
             USE_LOCAL=true
+            shift
+            ;;
+        --upgrade|-u)
+            UPGRADE=true
             shift
             ;;
     esac
@@ -40,14 +45,26 @@ echo "Virtual environment ready."
 echo "Installing dependencies..."
 if [ "$USE_LOCAL" = true ]; then
     echo "  - Installing flatagents from local source..."
-    uv pip install --python "$VENV_DIR/bin/python" -e "$SDK_DIR" --quiet
+    if [ "$UPGRADE" = true ]; then
+        uv pip install --python "$VENV_DIR/bin/python" -U -e "$SDK_DIR" --quiet
+    else
+        uv pip install --python "$VENV_DIR/bin/python" -e "$SDK_DIR" --quiet
+    fi
 else
     echo "  - Installing flatagents from PyPI..."
-    uv pip install --python "$VENV_DIR/bin/python" flatagents[litellm] --quiet
+    if [ "$UPGRADE" = true ]; then
+        uv pip install --python "$VENV_DIR/bin/python" -U flatagents[litellm] --quiet
+    else
+        uv pip install --python "$VENV_DIR/bin/python" flatagents[litellm] --quiet
+    fi
 fi
 
 echo "  - Installing multi_paper_synthesizer package..."
-uv pip install --python "$VENV_DIR/bin/python" -e "$SCRIPT_DIR" --quiet
+if [ "$UPGRADE" = true ]; then
+    uv pip install --python "$VENV_DIR/bin/python" -U -e "$SCRIPT_DIR" --quiet
+else
+    uv pip install --python "$VENV_DIR/bin/python" -e "$SCRIPT_DIR" --quiet
+fi
 
 # Run the demo
 echo "Running demo..."
