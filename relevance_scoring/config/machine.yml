@@ -1,0 +1,62 @@
+spec: flatmachine
+spec_version: "0.3.0"
+
+data:
+  name: relevance-scoring
+
+  context:
+    db_path: "{{ input.db_path }}"
+    config_path: "{{ input.config_path }}"
+    since: "{{ input.since }}"
+    until: "{{ input.until }}"
+    limit: "{{ input.limit }}"
+    batch_size: "{{ input.batch_size | default(64) }}"
+    dry_run: "{{ input.dry_run | default(false) }}"
+    anchors: []
+    model_name: null
+    normalize: true
+    targets: []
+    scored: []
+    scored_count: 0
+    error: null
+
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: init_db
+
+    init_db:
+      action: init_db
+      transitions:
+        - to: load_config
+
+    load_config:
+      action: load_config
+      transitions:
+        - to: select_targets
+
+    select_targets:
+      action: select_targets
+      transitions:
+        - to: score_targets
+
+    score_targets:
+      action: score_targets
+      transitions:
+        - to: upsert_scores
+
+    upsert_scores:
+      action: upsert_scores
+      transitions:
+        - to: done
+
+    done:
+      type: final
+      output:
+        scored_count: "{{ context.scored_count }}"
+        error: "{{ context.error }}"
+
+metadata:
+  description: "Local embedding-based FMR scoring for arXiv papers"
+  tags: ["fmr", "embeddings", "sqlite"]
