@@ -1,0 +1,73 @@
+spec: flatmachine
+spec_version: "0.3.0"
+
+data:
+  name: arxiv-crawler
+
+  context:
+    db_path: "{{ input.db_path }}"
+    categories: "{{ input.categories | tojson }}"
+    max_results: "{{ input.max_results }}"
+    since: "{{ input.since }}"
+    until: "{{ input.until }}"
+    progress_every: "{{ input.progress_every | default(500) }}"
+    dry_run: "{{ input.dry_run | default(false) }}"
+    source_id: null
+    run_id: null
+    query: null
+    fetched_entries: []
+    new_ids: []
+    updated_ids: []
+    fetched_count: 0
+    new_count: 0
+    updated_count: 0
+    latest_updated: null
+
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: init_db
+
+    init_db:
+      action: init_db
+      transitions:
+        - to: load_state
+
+    load_state:
+      action: load_state
+      transitions:
+        - to: fetch_arxiv
+
+    fetch_arxiv:
+      action: fetch_arxiv
+      transitions:
+        - to: upsert_papers
+
+    upsert_papers:
+      action: upsert_papers
+      transitions:
+        - to: enqueue_new
+
+    enqueue_new:
+      action: enqueue_new
+      transitions:
+        - to: record_run
+
+    record_run:
+      action: record_run
+      transitions:
+        - to: done
+
+    done:
+      type: final
+      output:
+        run_id: "{{ context.run_id }}"
+        fetched_count: "{{ context.fetched_count }}"
+        new_count: "{{ context.new_count }}"
+        updated_count: "{{ context.updated_count }}"
+        latest_updated: "{{ context.latest_updated }}"
+
+metadata:
+  description: "Cron-friendly arXiv crawler for LLM research metadata"
+  tags: ["crawler", "arxiv", "sqlite"]
