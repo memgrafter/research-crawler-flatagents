@@ -5,6 +5,7 @@ VENV_PATH=".venv"
 
 LOCAL_INSTALL=false
 UPGRADE=false
+SKIP_INSTALL=false
 PASSTHROUGH_ARGS=()
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -14,6 +15,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --upgrade|-u)
             UPGRADE=true
+            shift
+            ;;
+        --skip-install|--no-install)
+            SKIP_INSTALL=true
             shift
             ;;
         --)
@@ -40,28 +45,32 @@ else
     echo "Virtual environment already exists."
 fi
 
-echo "Installing dependencies..."
-if [ "$LOCAL_INSTALL" = true ]; then
-    echo "  - Installing flatagents from local source..."
-    if [ "$UPGRADE" = true ]; then
-        uv pip install --python "$VENV_PATH/bin/python" -U -e "$SCRIPT_DIR/../..[litellm]"
-    else
-        uv pip install --python "$VENV_PATH/bin/python" -e "$SCRIPT_DIR/../..[litellm]"
-    fi
+if [ "$SKIP_INSTALL" = true ]; then
+    echo "Skipping dependency installs."
 else
-    echo "  - Installing flatagents from PyPI..."
-    if [ "$UPGRADE" = true ]; then
-        uv pip install --python "$VENV_PATH/bin/python" -U "flatagents[litellm]"
+    echo "Installing dependencies..."
+    if [ "$LOCAL_INSTALL" = true ]; then
+        echo "  - Installing flatagents from local source..."
+        if [ "$UPGRADE" = true ]; then
+            uv pip install --python "$VENV_PATH/bin/python" -U -e "$SCRIPT_DIR/../..[litellm]"
+        else
+            uv pip install --python "$VENV_PATH/bin/python" -e "$SCRIPT_DIR/../..[litellm]"
+        fi
     else
-        uv pip install --python "$VENV_PATH/bin/python" "flatagents[litellm]"
+        echo "  - Installing flatagents from PyPI..."
+        if [ "$UPGRADE" = true ]; then
+            uv pip install --python "$VENV_PATH/bin/python" -U "flatagents[litellm]"
+        else
+            uv pip install --python "$VENV_PATH/bin/python" "flatagents[litellm]"
+        fi
     fi
-fi
 
-echo "  - Installing relevance_scoring package..."
-if [ "$UPGRADE" = true ]; then
-    uv pip install --python "$VENV_PATH/bin/python" -U -e "$SCRIPT_DIR"
-else
-    uv pip install --python "$VENV_PATH/bin/python" -e "$SCRIPT_DIR"
+    echo "  - Installing relevance_scoring package..."
+    if [ "$UPGRADE" = true ]; then
+        uv pip install --python "$VENV_PATH/bin/python" -U -e "$SCRIPT_DIR"
+    else
+        uv pip install --python "$VENV_PATH/bin/python" -e "$SCRIPT_DIR"
+    fi
 fi
 
 echo "Running scoring..."
