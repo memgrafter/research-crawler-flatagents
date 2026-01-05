@@ -77,6 +77,17 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Fetch and parse without writing to SQLite",
     )
+    parser.add_argument(
+        "--min-score",
+        type=float,
+        default=None,
+        help="Minimum FMR score from paper_relevance (e.g., 0.5)",
+    )
+    parser.add_argument(
+        "--no-authors-only",
+        action="store_true",
+        help="Only process papers that haven't been author-enriched yet",
+    )
     return parser.parse_args()
 
 
@@ -95,6 +106,8 @@ async def run(args: argparse.Namespace) -> dict:
         "concurrency": args.concurrency,
         "use_doi": args.use_doi,
         "dry_run": args.dry_run,
+        "min_score": args.min_score,
+        "no_authors_only": args.no_authors_only,
     }
 
     logger.info("Starting reverse citation enrichment")

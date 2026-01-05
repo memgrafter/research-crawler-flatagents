@@ -9,6 +9,7 @@ data:
     since: "{{ input.since }}"
     until: "{{ input.until }}"
     limit: "{{ input.limit }}"
+    min_score: "{{ input.min_score }}"
     cooldown_days: "{{ input.cooldown_days | default(30) }}"
     batch_size: "{{ input.batch_size | default(100) }}"
     max_pages: "{{ input.max_pages | default(5) }}"
@@ -17,13 +18,9 @@ data:
     use_doi: "{{ input.use_doi | default(false) }}"
     provider: "openalex"
     run_id: null
-    targets: []
-    resolved_targets: []
-    work_cache: []
-    edges: []
-    citation_summaries: []
     target_count: 0
     resolved_count: 0
+    authors_enriched: 0
     edge_count: 0
     error: null
 
@@ -41,20 +38,11 @@ data:
     select_targets:
       action: select_targets
       transitions:
-        - to: resolve_targets
+        - to: process_papers
 
-    resolve_targets:
-      action: resolve_targets
-      transitions:
-        - to: fetch_citations
-
-    fetch_citations:
-      action: fetch_citations
-      transitions:
-        - to: upsert_results
-
-    upsert_results:
-      action: upsert_results
+    # Single action that processes papers incrementally with saves
+    process_papers:
+      action: process_papers
       transitions:
         - to: record_run
 
@@ -69,6 +57,7 @@ data:
         run_id: "{{ context.run_id }}"
         target_count: "{{ context.target_count }}"
         resolved_count: "{{ context.resolved_count }}"
+        authors_enriched: "{{ context.authors_enriched }}"
         edge_count: "{{ context.edge_count }}"
         error: "{{ context.error }}"
 

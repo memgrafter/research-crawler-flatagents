@@ -48,3 +48,33 @@ CREATE INDEX IF NOT EXISTS idx_citations_citing_paper_id ON citations(citing_pap
 CREATE INDEX IF NOT EXISTS idx_paper_citations_count ON paper_citations(cited_by_count);
 CREATE INDEX IF NOT EXISTS idx_citation_cache_arxiv_id ON citation_work_cache(arxiv_id);
 CREATE INDEX IF NOT EXISTS idx_citation_cache_doi ON citation_work_cache(doi);
+
+-- Author cache to avoid duplicate OpenAlex API calls
+CREATE TABLE IF NOT EXISTS authors (
+    openalex_id TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    orcid TEXT,
+    h_index INTEGER,
+    i10_index INTEGER,
+    cited_by_count INTEGER,
+    works_count INTEGER,
+    affiliation_name TEXT,
+    affiliation_ror TEXT,
+    retrieved_at TEXT NOT NULL,
+    raw_json TEXT
+);
+
+-- Junction table linking papers to authors
+CREATE TABLE IF NOT EXISTS paper_authors (
+    paper_id INTEGER NOT NULL,
+    author_openalex_id TEXT NOT NULL,
+    author_position INTEGER NOT NULL,  -- 0 = first author, 1 = second, etc.
+    is_corresponding BOOLEAN DEFAULT FALSE,
+    PRIMARY KEY (paper_id, author_openalex_id),
+    FOREIGN KEY (paper_id) REFERENCES papers(id),
+    FOREIGN KEY (author_openalex_id) REFERENCES authors(openalex_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_authors_h_index ON authors(h_index);
+CREATE INDEX IF NOT EXISTS idx_authors_works_count ON authors(works_count);
+CREATE INDEX IF NOT EXISTS idx_paper_authors_author ON paper_authors(author_openalex_id);
