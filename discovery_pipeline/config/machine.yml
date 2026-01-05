@@ -1,0 +1,111 @@
+spec: flatmachine
+spec_version: "0.3.0"
+
+data:
+  name: discovery-pipeline
+  
+  context:
+    db_path: "{{ input.db_path | default('../arxiv_crawler/data/arxiv.sqlite') }}"
+    limit: "{{ input.limit | default(10000) }}"
+    report_path: "{{ input.report_path | default('./reports') }}"
+    # Auto-calculated from DB
+    since: null
+    # Results from each phase
+    crawl_result: null
+    score_result: null
+    enrich_result: null
+    top_papers: []
+    report: null
+  
+  machines:
+    crawler: ../../arxiv_crawler/config/machine.yml
+    scorer: ../../relevance_scoring/config/machine.yml
+    enricher: ../../reverse_citation_enrichment/config/machine.yml
+  
+  agents:
+    reporter: ./reporter.yml
+  
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: load_last_run
+
+    # Load the last run date from DB
+    load_last_run:
+      action: load_last_run
+      transitions:
+        - to: crawl
+
+    # Step 1: Crawl new papers from arXiv
+    crawl:
+      machine: crawler
+      input:
+        db_path: "{{ context.db_path }}"
+        since: "{{ context.since }}"
+        max_results: 5000
+      output_to_context:
+        crawl_result: "{{ output }}"
+      transitions:
+        - to: score
+
+    # Step 2: Score new papers for relevance
+    score:
+      machine: scorer
+      input:
+        db_path: "{{ context.db_path }}"
+        limit: "{{ context.limit }}"
+      output_to_context:
+        score_result: "{{ output }}"
+      transitions:
+        - to: enrich
+
+    # Step 3: Enrich with OpenAlex data
+    enrich:
+      machine: enricher
+      input:
+        db_path: "{{ context.db_path }}"
+        limit: "{{ context.limit }}"
+        no_authors_only: true
+        cooldown_days: 0
+      output_to_context:
+        enrich_result: "{{ output }}"
+      transitions:
+        - to: fetch_top_papers
+
+    # Step 4: Query top papers for report
+    fetch_top_papers:
+      action: fetch_top_papers
+      transitions:
+        - to: generate_report
+
+    # Step 5: Generate LLM report
+    generate_report:
+      agent: reporter
+      input:
+        papers: "{{ context.top_papers | tojson }}"
+        new_count: "{{ context.crawl_result.new_count }}"
+        scored_count: "{{ context.score_result.scored_count }}"
+        enriched_count: "{{ context.enrich_result.resolved_count }}"
+      output_to_context:
+        report: "{{ output.report }}"
+      transitions:
+        - to: save_report
+
+    # Step 6: Save report to file
+    save_report:
+      action: save_report
+      transitions:
+        - to: done
+
+    done:
+      type: final
+      output:
+        new_papers: "{{ context.crawl_result.new_count }}"
+        scored_papers: "{{ context.score_result.scored_count }}"
+        enriched_papers: "{{ context.enrich_result.resolved_count }}"
+        report_path: "{{ context.report_file }}"
+
+metadata:
+  description: "Daily/weekly paper discovery pipeline with LLM-generated reports"
+  tags: ["pipeline", "discovery", "hsm"]

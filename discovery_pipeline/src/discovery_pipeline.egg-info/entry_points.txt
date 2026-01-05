@@ -1,0 +1,2 @@
+[console_scripts]
+discovery-pipeline = discovery_pipeline.main:main

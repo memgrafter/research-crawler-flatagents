@@ -200,9 +200,11 @@ class CitationHooks(MachineHooks):
         provider = context.get("provider") or "openalex"
 
         self.logger.info(
-            "Selecting targets from %s (limit=%d, cooldown_days=%d)",
+            "Selecting targets from %s (limit=%d, since=%s, until=%s, cooldown_days=%d)",
             db_path,
             limit,
+            since,
+            until,
             cooldown_days,
         )
 
@@ -218,7 +220,8 @@ class CitationHooks(MachineHooks):
 
         min_score = context.get("min_score")
         score_join = ""
-        if min_score is not None and str(min_score).lower() != "none":
+        min_score_str = str(min_score).strip().lower() if min_score is not None else ""
+        if min_score_str and min_score_str != "none":
             score_join = "INNER JOIN paper_relevance pr_score ON pr_score.paper_id = p.id"
             where_clauses.append("pr_score.fmr_score >= ?")
             params.append(float(min_score))

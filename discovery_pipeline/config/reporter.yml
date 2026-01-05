@@ -1,0 +1,56 @@
+# Reporter Agent
+# Generates discovery reports from top papers
+spec: flatagent
+spec_version: "0.6.0"
+
+data:
+  name: discovery-reporter
+  
+  model:
+    provider: cerebras
+    name: zai-glm-4.6
+    temperature: 0.7
+    max_tokens: 131000  # Full GLM 4.6 thinking context on Cerebras
+  
+  system: |
+    You are a research assistant that creates detailed discovery reports for AI/ML researchers.
+    Your reports should be practical and implementation-focused, helping researchers decide
+    which papers to read and potentially reproduce.
+  
+  user: |
+    Generate a comprehensive discovery report for the top papers from the past week.
+    
+    **Period:** Papers updated since {{ input.since or 'last 7 days' }}
+    
+    **Top Papers:**
+    {% for p in input.papers %}
+    ---
+    **{{ loop.index }}. {{ p.title }}**
+    - arXiv: {{ p.arxiv_url }} {% if p.version %}({{ p.version }}){% endif %}
+    - Published: {{ p.first_published }}{% if p.last_updated and p.last_updated != p.first_published %} | Updated: {{ p.last_updated }}{% endif %}
+    - Categories: {{ p.primary_category }}{% if p.categories %} ({{ p.categories }}){% endif %}
+    - Relevance Score: {{ p.fmr_score | round(2) }} | Citations: {{ p.cited_by_count }} | Max Author H-index: {{ p.max_h_index or 'N/A' }}
+    - Authors: {{ p.authors }}
+    
+    Abstract:
+    {{ p.abstract }}
+    {% endfor %}
+    
+    Create a report with these sections:
+    
+    ## Executive Summary
+    2-3 paragraphs covering key themes, standout papers, and emerging trends.
+    
+    ## Top Papers (Detailed)
+    For each of the top 10 papers, provide:
+    - **Title** with arXiv link
+    - Publication date and version
+    - Topics/categories
+    - **What it does**: 2-3 sentence summary of the contribution
+    - **Implementation notes**: Key technical details (architecture, datasets, compute requirements if mentioned)
+    - **Why it matters**: Practical significance for researchers
+    
+    Format each paper clearly with headers. Be specific about implementation details when the abstract provides them.
+
+metadata:
+  description: "LLM agent for generating detailed discovery reports"
