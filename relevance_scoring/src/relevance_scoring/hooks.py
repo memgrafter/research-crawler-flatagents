@@ -112,7 +112,9 @@ class ScoringHooks(MachineHooks):
         query = f"""
             SELECT p.id, p.title, p.abstract
             FROM papers p
+            LEFT JOIN paper_relevance pr ON p.id = pr.paper_id
             WHERE {" AND ".join(where_clauses)}
+              AND pr.paper_id IS NULL
             ORDER BY COALESCE(p.updated_at, p.published_at) DESC
             LIMIT ?
         """
@@ -146,12 +148,16 @@ class ScoringHooks(MachineHooks):
         normalize = bool(context.get("normalize"))
         query_prompt = context.get("query_prompt")
 
+        total_targets = len(targets)
         self.logger.info("Loading embedding model: %s", model_name)
         model = SentenceTransformer(
             model_name,
             trust_remote_code=trust_remote_code,
             model_kwargs=model_kwargs,
             config_kwargs=config_kwargs,
+        )
+        self.logger.info(
+            "Scoring %d papers in batches of %d", total_targets, batch_size
         )
 
         if query_prompt:
@@ -164,8 +170,17 @@ class ScoringHooks(MachineHooks):
         )
         anchor_embeddings = np.asarray(anchor_embeddings)
 
-        scored: List[Dict[str, Any]] = []
-        for idx in range(0, len(targets), batch_size):
+        dry_run = parse_bool(context.get("dry_run"))
+        db_path = Path(context["db_path"]) if not dry_run else None
+        
+        scored_count = 0
+        total_batches = max(1, (total_targets + batch_size - 1) // batch_size)
+        for idx in range(0, total_targets, batch_size):
+            batch_index = idx // batch_size + 1
+            if batch_index == 1 or batch_index == total_batches or batch_index % 10 == 0:
+                self.logger.info(
+                    "Scoring batch %d/%d", batch_index, total_batches
+                )
             batch = targets[idx : idx + batch_size]
             texts = [
                 f"{item['title']}\n\n{item['abstract']}".strip() for item in batch
@@ -179,18 +194,59 @@ class ScoringHooks(MachineHooks):
             best_idx = np.argmax(scores, axis=1)
             best_scores = np.max(scores, axis=1)
 
+            # Write batch to DB immediately
+            batch_scored = []
             for item, anchor_idx, score in zip(batch, best_idx, best_scores):
-                scored.append(
+                batch_scored.append(
                     {
                         "paper_id": item["paper_id"],
                         "fmr_score": float(score),
                         "best_anchor": anchors[int(anchor_idx)],
                     }
                 )
+            
+            if not dry_run and db_path:
+                self._write_batch_scores(db_path, batch_scored)
+            scored_count += len(batch_scored)
 
-        context["scored"] = scored
-        context["scored_count"] = len(scored)
+        context["scored"] = []  # Already written to DB
+        context["scored_count"] = scored_count
         return context
+    
+    def _write_batch_scores(self, db_path: Path, batch: List[Dict[str, Any]]) -> None:
+        """Write a batch of scores to the database immediately."""
+        conn = sqlite3.connect(db_path)
+        conn.execute("PRAGMA foreign_keys = ON;")
+        now = utc_now_iso()
+        
+        for item in batch:
+            conn.execute(
+                """
+                INSERT INTO paper_relevance (
+                    paper_id, fmr_score, scored_at, details_json
+                )
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(paper_id) DO UPDATE SET
+                    fmr_score = excluded.fmr_score,
+                    scored_at = excluded.scored_at,
+                    details_json = excluded.details_json
+                """,
+                (
+                    item["paper_id"],
+                    item["fmr_score"],
+                    now,
+                    json.dumps(
+                        {
+                            "best_anchor": item["best_anchor"],
+                            "method": "embedding_max",
+                        },
+                        ensure_ascii=True,
+                    ),
+                ),
+            )
+        
+        conn.commit()
+        conn.close()
 
     def _upsert_scores(self, context: Dict[str, Any]) -> Dict[str, Any]:
         if parse_bool(context.get("dry_run")):
