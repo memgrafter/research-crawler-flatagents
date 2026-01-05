@@ -30,3 +30,7 @@ Score a batch:
 - `schema.sql`: `paper_relevance` table
 - `src/relevance_scoring/main.py`: CLI entry point
 - `src/relevance_scoring/hooks.py`: scoring logic
+
+# Fixes needed
+
+- Caveat: Does not only enrich the new papers, which means it might do papers with expired cooldown.

@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "discovery-pipeline"
+version = "0.1.0"
+description = "Unified paper discovery pipeline"
+requires-python = ">=3.10"
+dependencies = [
+    "flatagents[litellm]",
+    # Child packages installed via path dependencies
+]
+
+[project.optional-dependencies]
+dev = [
+    "arxiv-crawler @ file:///${PROJECT_ROOT}/../arxiv_crawler",
+    "relevance-scoring @ file:///${PROJECT_ROOT}/../relevance_scoring",
+    "reverse-citation-enrichment @ file:///${PROJECT_ROOT}/../reverse_citation_enrichment",
+]
+
+[project.scripts]
+discovery-pipeline = "discovery_pipeline.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

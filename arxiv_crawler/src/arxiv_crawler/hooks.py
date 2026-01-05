@@ -14,9 +14,7 @@ ARXIV_API_URL = "https://export.arxiv.org/api/query"
 ATOM_NS = "{http://www.w3.org/2005/Atom}"
 ARXIV_NS = "{http://arxiv.org/schemas/atom}"
 USER_AGENT = "research-crawler/0.1"
-MAX_RETRIES = 4
-BASE_BACKOFF_SECONDS = 1.0
-MAX_BACKOFF_SECONDS = 30.0
+RETRY_BACKOFFS = [1, 3, 30, 1, 3, 60, 1, 3, 120]  # Dwell pattern for unstable APIs
 THROTTLE_RANGE_SECONDS = (0.5, 1.5)
 ARXIV_PAGE_SIZE = 100
 LLM_RELEVANCE_CATEGORIES = {
@@ -90,11 +88,15 @@ def build_search_query(
     since_dt: Optional[datetime],
     until_dt: Optional[datetime],
 ) -> str:
+    """Build arXiv API search query.
+
+    Note: We intentionally do NOT include lastUpdatedDate range in the query
+    because arXiv's API returns 500 errors with date range syntax. Instead,
+    date filtering is handled client-side in _fetch_arxiv using since_dt/until_dt.
+    """
     cat_query = " OR ".join(f"cat:{cat}" for cat in categories)
     base_query = f"({cat_query})" if cat_query else "all:*"
-    if since_dt or until_dt:
-        date_range = f"{format_arxiv_date(since_dt)} TO {format_arxiv_date(until_dt)}"
-        return f"{base_query} AND lastUpdatedDate:[{date_range}]"
+    # Date filtering is handled client-side in _fetch_arxiv, not here
     return base_query
 
 
@@ -239,7 +241,7 @@ class CrawlerHooks(MachineHooks):
             if row:
                 since = row[0]
 
-        categories = parse_categories(context.get("categories"))
+        categories = parse_categories(context.get("categories")) or list(LLM_RELEVANCE_CATEGORIES)
         since_dt = parse_iso_datetime(since)
         until_dt = parse_iso_datetime(context.get("until"))
         query = build_search_query(categories, since_dt, until_dt)
@@ -261,7 +263,7 @@ class CrawlerHooks(MachineHooks):
         until_dt = parse_iso_datetime(context.get("until"))
         query = context.get("query")
         if not query:
-            categories = parse_categories(context.get("categories"))
+            categories = parse_categories(context.get("categories")) or list(LLM_RELEVANCE_CATEGORIES)
             query = build_search_query(categories, since_dt, until_dt)
         progress_every = int(context.get("progress_every") or 0)
 
@@ -591,13 +593,14 @@ class CrawlerHooks(MachineHooks):
     def _request_with_retries(self, params: Dict[str, Any]) -> httpx.Response:
         headers = {"User-Agent": USER_AGENT}
         last_error: Optional[Exception] = None
+        max_retries = len(RETRY_BACKOFFS)
 
-        for attempt in range(MAX_RETRIES + 1):
+        for attempt in range(max_retries + 1):
             if attempt > 0:
-                backoff = min(MAX_BACKOFF_SECONDS, BASE_BACKOFF_SECONDS * (2 ** (attempt - 1)))
+                backoff = RETRY_BACKOFFS[attempt - 1]
                 jitter = random.uniform(0.0, 0.5)
                 sleep_for = backoff + jitter
-                self.logger.warning("Retrying in %.1fs (attempt %d/%d)", sleep_for, attempt, MAX_RETRIES)
+                self.logger.warning("Retrying in %.1fs (attempt %d/%d)", sleep_for, attempt, max_retries)
                 time.sleep(sleep_for)
             try:
                 response = httpx.get(
@@ -608,17 +611,7 @@ class CrawlerHooks(MachineHooks):
                 )
                 if response.status_code == 429:
                     retry_after = response.headers.get("Retry-After")
-                    wait_seconds = None
-                    if retry_after:
-                        try:
-                            wait_seconds = float(retry_after)
-                        except ValueError:
-                            wait_seconds = None
-                    if wait_seconds is None:
-                        wait_seconds = min(
-                            MAX_BACKOFF_SECONDS,
-                            BASE_BACKOFF_SECONDS * (2 ** attempt),
-                        )
+                    wait_seconds = float(retry_after) if retry_after else 60.0
                     self.logger.warning("429 received; waiting %.1fs before retry", wait_seconds)
                     time.sleep(wait_seconds)
                     continue
