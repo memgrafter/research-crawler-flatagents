@@ -325,12 +325,18 @@ class CitationHooks(MachineHooks):
             )
             
             if not result:
+                # Resolution failed - still record the attempt for cooldown
+                if not dry_run:
+                    self._record_attempt(db_path, paper_id, provider)
                 continue
             
             openalex_id = result.get("openalex_id")
             work_data = result.get("work_data")
             
             if not openalex_id:
+                # Got response but no match - still record attempt for cooldown
+                if not dry_run:
+                    self._record_attempt(db_path, paper_id, provider)
                 continue
             
             resolved_count += 1
@@ -657,6 +663,24 @@ class CitationHooks(MachineHooks):
                     (paper_id, row[0], edge["source"], edge["retrieved_at"]),
                 )
         
+        conn.commit()
+        conn.close()
+
+    def _record_attempt(self, db_path: Path, paper_id: int, provider: str) -> None:
+        """Record that we attempted to resolve a paper, even if it failed.
+        
+        This ensures cooldown_days applies to failed papers too.
+        """
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            """
+            INSERT INTO paper_citations (paper_id, source, cited_by_count, retrieved_at, raw_json)
+            VALUES (?, ?, 0, ?, ?)
+            ON CONFLICT(paper_id, source) DO UPDATE SET
+                retrieved_at = excluded.retrieved_at
+            """,
+            (paper_id, provider, utc_now_iso(), json.dumps({"status": "not_found"})),
+        )
         conn.commit()
         conn.close()
 
