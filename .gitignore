@@ -1,7 +1,6 @@
-
+.vscode
 AGENTS.md
+
 *.log
-
 reports/
-
 **/__pycache__/
