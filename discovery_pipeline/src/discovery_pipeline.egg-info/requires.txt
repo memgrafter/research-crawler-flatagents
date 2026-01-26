@@ -1,6 +1,6 @@
-flatagents[litellm]
+flatagents[litellm]>=0.8.1
 
 [dev]
-arxiv-crawler@ file:///${PROJECT_ROOT}/../arxiv_crawler
-relevance-scoring@ file:///${PROJECT_ROOT}/../relevance_scoring
-reverse-citation-enrichment@ file:///${PROJECT_ROOT}/../reverse_citation_enrichment
+arxiv-crawler @ file:///${PROJECT_ROOT}/../arxiv_crawler
+relevance-scoring @ file:///${PROJECT_ROOT}/../relevance_scoring
+reverse-citation-enrichment @ file:///${PROJECT_ROOT}/../reverse_citation_enrichment

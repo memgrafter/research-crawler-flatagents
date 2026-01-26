@@ -2,7 +2,7 @@
 name = "multi_paper_synthesizer"
 version = "0.1.0"
 description = "Multi-paper research synthesizer with HSM orchestration"
-dependencies = ["flatagents[litellm]", "pypdf", "httpx"]
+dependencies = ["flatagents[litellm]>=0.8.1", "pypdf", "httpx"]
 requires-python = ">=3.10"
 
 [build-system]

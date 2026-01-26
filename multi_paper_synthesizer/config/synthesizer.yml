@@ -1,7 +1,7 @@
 # Synthesizer Agent
 # Creates unified synthesis from multi-paper analysis
 spec: flatagent
-spec_version: "0.6.0"
+spec_version: "0.8.1"
 
 data:
   name: synthesizer

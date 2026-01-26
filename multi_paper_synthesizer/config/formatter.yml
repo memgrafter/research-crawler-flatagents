@@ -1,7 +1,7 @@
 # Formatter Agent
 # Creates beautifully formatted markdown synthesis report
 spec: flatagent
-spec_version: "0.6.0"
+spec_version: "0.8.1"
 
 data:
   name: formatter

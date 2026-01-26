@@ -28,8 +28,8 @@ else
 fi
 
 echo "Installing dependencies..."
-echo "  - Installing flatagents from PyPI..."
-uv pip install --python "$VENV_PATH/bin/python" "flatagents[litellm]"
+echo "  - Installing flatagents from local repo..."
+uv pip install --python "$VENV_PATH/bin/python" -e "$SCRIPT_DIR/../../flatagents/sdk/python[litellm]"
 
 echo "  - Installing discovery_pipeline package..."
 uv pip install --python "$VENV_PATH/bin/python" -e "$SCRIPT_DIR"

@@ -4,11 +4,11 @@
 # Loops up to 3 times until quality_score >= 8
 
 spec: flatmachine
-spec_version: "0.3.0"
+spec_version: "0.8.1"
 
 data:
   name: refiner
-  
+
   context:
     # Input from parent
     title: "{{ input.title }}"
@@ -21,14 +21,16 @@ data:
     reference_count: "{{ input.reference_count }}"
     # Refinement state
     summary: null
+    raw_critique: null
     critique: null
     quality_score: 0
     iteration: 0
-  
+
   agents:
     synthesizer: ./synthesizer.yml
     critic: ./critic.yml
-  
+    critic_extractor: ./critic_extractor.yml
+
   states:
     start:
       type: initial
@@ -70,6 +72,20 @@ data:
         summary: "{{ context.summary }}"
         key_findings: "{{ context.key_findings }}"
         methodology: "{{ context.methodology }}"
+      output_to_context:
+        raw_critique: "{{ output.content }}"
+      transitions:
+        - to: extract_critique
+
+    # Extract structured critique fields
+    extract_critique:
+      agent: critic_extractor
+      execution:
+        type: retry
+        backoffs: [2, 8, 16, 35]
+        jitter: 0.1
+      input:
+        text: "{{ context.raw_critique }}"
       output_to_context:
         quality_score: "{{ output.quality_score }}"
         critique: "{{ output.critique }}"

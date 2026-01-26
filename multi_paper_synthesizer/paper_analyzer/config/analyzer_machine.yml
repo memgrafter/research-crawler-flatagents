@@ -1,29 +1,35 @@
 # Analyzer Child Machine
 # Extracts key information from paper abstract and sections
 # Contains 2 agents: abstract_analyzer and section_analyzer
+# Each thinking agent produces raw text, then an extractor produces structured JSON
 
 spec: flatmachine
-spec_version: "0.3.0"
+spec_version: "0.8.1"
 
 data:
   name: analyzer
-  
+
   context:
     title: "{{ input.title }}"
     authors: "{{ input.authors }}"
     abstract: "{{ input.abstract }}"
     section_text: "{{ input.section_text }}"
-    # Analysis outputs
+    # Raw analysis outputs (free-form text from thinking agents)
+    raw_abstract_analysis: null
+    raw_section_analysis: null
+    # Extracted structured outputs
     key_findings: null
     methodology: null
     contributions: null
     technical_details: null
     results: null
-  
+
   agents:
     abstract_analyzer: ./abstract_analyzer.yml
+    abstract_analyzer_extractor: ./abstract_analyzer_extractor.yml
     section_analyzer: ./section_analyzer.yml
-  
+    section_analyzer_extractor: ./section_analyzer_extractor.yml
+
   states:
     start:
       type: initial
@@ -40,6 +46,19 @@ data:
         authors: "{{ context.authors }}"
         abstract: "{{ context.abstract }}"
       output_to_context:
+        raw_abstract_analysis: "{{ output.content }}"
+      transitions:
+        - to: extract_abstract
+
+    extract_abstract:
+      agent: abstract_analyzer_extractor
+      execution:
+        type: retry
+        backoffs: [2, 8, 16, 35]
+        jitter: 0.1
+      input:
+        text: "{{ context.raw_abstract_analysis }}"
+      output_to_context:
         key_findings: "{{ output.key_findings }}"
         methodology: "{{ output.methodology }}"
         contributions: "{{ output.contributions }}"
@@ -55,6 +74,19 @@ data:
         title: "{{ context.title }}"
         key_findings: "{{ context.key_findings }}"
         section_text: "{{ context.section_text }}"
+      output_to_context:
+        raw_section_analysis: "{{ output.content }}"
+      transitions:
+        - to: extract_sections
+
+    extract_sections:
+      agent: section_analyzer_extractor
+      execution:
+        type: retry
+        backoffs: [2, 8, 16, 35]
+        jitter: 0.1
+      input:
+        text: "{{ context.raw_section_analysis }}"
       output_to_context:
         technical_details: "{{ output.technical_details }}"
         results: "{{ output.results }}"

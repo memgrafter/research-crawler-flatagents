@@ -3,11 +3,11 @@
 # Demonstrates: HSM with dynamic child invocations, cross-document synthesis
 
 spec: flatmachine
-spec_version: "0.3.0"
+spec_version: "0.8.1"
 
 data:
   name: multi-paper-synthesizer
-  
+
   context:
     # Input papers (list of parsed paper objects)
     papers: "{{ input.papers | tojson }}"
@@ -15,24 +15,32 @@ data:
     research_question: "{{ input.research_question }}"
     # Analysis results (one per paper)
     paper_analyses: []
+    # Raw thinking outputs
+    raw_comparison: null
+    raw_gaps: null
+    raw_critique: null
     # Synthesis results
     common_themes: null
     key_differences: null
     research_gaps: null
+    opportunities: null
     synthesis_report: null
     quality_score: 0
-  
+
   agents:
     comparator: ./comparator.yml
+    comparator_extractor: ./comparator_extractor.yml
     gap_finder: ./gap_finder.yml
+    gap_finder_extractor: ./gap_finder_extractor.yml
     synthesizer: ./synthesizer.yml
     critic: ./critic.yml
+    critic_extractor: ./critic_extractor.yml
     formatter: ./formatter.yml
-  
+
   # Reference to the paper analyzer child machine
   machines:
     paper_analyzer: ../paper_analyzer/config/machine.yml
-  
+
   states:
     start:
       type: initial
@@ -68,6 +76,20 @@ data:
         analyses: "{{ context.paper_analyses | tojson }}"
         paper_count: "{{ context.paper_count }}"
       output_to_context:
+        raw_comparison: "{{ output.content }}"
+      transitions:
+        - to: extract_comparison
+
+    # Step 2b: Extract structured comparison fields
+    extract_comparison:
+      agent: comparator_extractor
+      execution:
+        type: retry
+        backoffs: [2, 8, 16, 35]
+        jitter: 0.1
+      input:
+        text: "{{ context.raw_comparison }}"
+      output_to_context:
         common_themes: "{{ output.common_themes }}"
         key_differences: "{{ output.key_differences }}"
       transitions:
@@ -84,6 +106,20 @@ data:
         common_themes: "{{ context.common_themes }}"
         key_differences: "{{ context.key_differences }}"
         analyses: "{{ context.paper_analyses | tojson }}"
+      output_to_context:
+        raw_gaps: "{{ output.content }}"
+      transitions:
+        - to: extract_gaps
+
+    # Step 3b: Extract structured gap fields
+    extract_gaps:
+      agent: gap_finder_extractor
+      execution:
+        type: retry
+        backoffs: [2, 8, 16, 35]
+        jitter: 0.1
+      input:
+        text: "{{ context.raw_gaps }}"
       output_to_context:
         research_gaps: "{{ output.research_gaps }}"
         opportunities: "{{ output.opportunities }}"
@@ -118,6 +154,20 @@ data:
         research_question: "{{ context.research_question }}"
         synthesis: "{{ context.synthesis_draft }}"
         paper_count: "{{ context.paper_count }}"
+      output_to_context:
+        raw_critique: "{{ output.content }}"
+      transitions:
+        - to: extract_critique
+
+    # Step 5b: Extract structured critique fields
+    extract_critique:
+      agent: critic_extractor
+      execution:
+        type: retry
+        backoffs: [2, 8, 16, 35]
+        jitter: 0.1
+      input:
+        text: "{{ context.raw_critique }}"
       output_to_context:
         quality_score: "{{ output.quality_score }}"
         critique: "{{ output.critique }}"

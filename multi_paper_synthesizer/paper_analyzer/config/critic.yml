@@ -1,7 +1,7 @@
 # Critic Agent
 # Judges quality of executive summary and provides improvement suggestions
 spec: flatagent
-spec_version: "0.6.0"
+spec_version: "0.8.1"
 
 data:
   name: critic
@@ -39,13 +39,5 @@ data:
     
     Be harsh but fair. Only 8+ if truly excellent.
   
-  output:
-    quality_score:
-      type: int
-      description: Quality score from 1-10
-    critique:
-      type: str
-      description: Specific improvements needed (or praise if 8+)
-
 metadata:
   description: "Judges summary quality and provides critique"

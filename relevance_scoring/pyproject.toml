@@ -2,7 +2,7 @@
 name = "relevance_scoring"
 version = "0.1.0"
 description = "Local-embedding FMR scoring for the research crawler"
-dependencies = ["flatagents[litellm]", "sentence-transformers", "huggingface-hub>=0.34.0,<1.0"]
+dependencies = ["flatagents[litellm]>=0.8.1", "sentence-transformers", "huggingface-hub>=0.34.0,<1.0"]
 requires-python = ">=3.10"
 
 [build-system]
