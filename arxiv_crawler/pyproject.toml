@@ -2,7 +2,7 @@
 name = "arxiv_crawler"
 version = "0.1.0"
 description = "FlatMachine arXiv crawler for LLM research"
-dependencies = ["flatagents[litellm]", "httpx"]
+dependencies = ["flatagents[litellm]>=0.8.1", "httpx"]
 requires-python = ">=3.10"
 
 [build-system]

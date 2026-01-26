@@ -1,5 +1,5 @@
 spec: flatmachine
-spec_version: "0.3.0"
+spec_version: "0.8.1"
 
 data:
   name: discovery-pipeline
@@ -88,7 +88,7 @@ data:
         scored_count: "{{ context.score_result.scored_count }}"
         enriched_count: "{{ context.enrich_result.resolved_count }}"
       output_to_context:
-        report: "{{ output.report }}"
+        report: "{{ output.content }}"
       transitions:
         - to: save_report
 

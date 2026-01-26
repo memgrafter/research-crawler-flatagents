@@ -1,0 +1,27 @@
+spec: flatagent
+spec_version: "0.8.1"
+
+data:
+  name: critic-extractor
+
+  model:
+    provider: cerebras
+    name: zai-glm-4.6
+    temperature: 0
+    max_tokens: 4096
+
+  system: |
+    Extract the specified fields from the given text. Return only valid JSON.
+
+  user: |
+    Text: {{ input.text }}
+
+    Extract the following fields from the text above.
+
+  output:
+    quality_score:
+      type: int
+      description: Quality score from 1-10
+    critique:
+      type: str
+      description: Specific improvements needed (or praise if 8+)

@@ -3,8 +3,8 @@ Name: discovery-pipeline
 Version: 0.1.0
 Summary: Unified paper discovery pipeline
 Requires-Python: >=3.10
-Requires-Dist: flatagents[litellm]
+Requires-Dist: flatagents[litellm]>=0.8.1
 Provides-Extra: dev
-Requires-Dist: arxiv-crawler@ file:///${PROJECT_ROOT}/../arxiv_crawler ; extra == "dev"
-Requires-Dist: relevance-scoring@ file:///${PROJECT_ROOT}/../relevance_scoring ; extra == "dev"
-Requires-Dist: reverse-citation-enrichment@ file:///${PROJECT_ROOT}/../reverse_citation_enrichment ; extra == "dev"
+Requires-Dist: arxiv-crawler @ file:///${PROJECT_ROOT}/../arxiv_crawler ; extra == "dev"
+Requires-Dist: relevance-scoring @ file:///${PROJECT_ROOT}/../relevance_scoring ; extra == "dev"
+Requires-Dist: reverse-citation-enrichment @ file:///${PROJECT_ROOT}/../reverse_citation_enrichment ; extra == "dev"

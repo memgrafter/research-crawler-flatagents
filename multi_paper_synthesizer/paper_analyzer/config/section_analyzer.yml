@@ -1,7 +1,7 @@
 # Section Analyzer Agent
 # Analyzes paper sections for technical details and results
 spec: flatagent
-spec_version: "0.6.0"
+spec_version: "0.8.1"
 
 data:
   name: section-analyzer
@@ -31,13 +31,5 @@ data:
     1. Technical details about the approach/architecture
     2. Key experimental results and metrics
   
-  output:
-    technical_details:
-      type: str
-      description: Technical details about the approach
-    results:
-      type: str
-      description: Key experimental results and metrics
-
 metadata:
   description: "Analyzes paper sections for technical depth"

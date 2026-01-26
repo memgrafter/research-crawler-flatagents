@@ -1,7 +1,7 @@
 # Critic Agent
 # Evaluates synthesis quality for multi-paper research synthesis
 spec: flatagent
-spec_version: "0.6.0"
+spec_version: "0.8.1"
 
 data:
   name: critic
@@ -33,13 +33,5 @@ data:
     - Are the gaps and opportunities well-identified?
     - Is it actionable for researchers?
   
-  output:
-    quality_score:
-      type: int
-      description: Quality score 1-10
-    critique:
-      type: str
-      description: Specific improvements needed
-
 metadata:
   description: "Evaluates synthesis quality"
