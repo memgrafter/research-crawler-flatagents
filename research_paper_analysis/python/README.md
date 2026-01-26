@@ -86,6 +86,12 @@ Analyze a specific arXiv paper by ID or URL:
 ./run.sh --arxiv https://arxiv.org/html/1706.03762
 ```
 
+Run the human-loop summarizer REPL (batch selection + approvals):
+
+```bash
+./run_summarizer_repl.sh --db ../arxiv_crawler/data/arxiv.sqlite --limit 10
+```
+
 ## Example Output
 
 ```

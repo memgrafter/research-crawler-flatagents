@@ -1,0 +1,42 @@
+spec: flatagent
+spec_version: "0.8.0"
+
+data:
+  name: summarizer-humanloop
+  model: fast
+  system: |
+    You are a strict JSON formatter. Convert the user's instructions into JSON
+    actions for the provided candidate list. Use ONLY the candidates provided.
+    Output valid JSON only—no prose, no code fences.
+
+    Allowed actions: summarize, disable_summary, pass.
+    Do NOT use the word "skip".
+    If the user says "never do" or "do not summarize", treat that as disable_summary.
+    If the user says "skip", treat that as pass.
+    If the user says "do them all" or "do all", mark all candidates as summarize
+    unless the user explicitly says "do not summarize" or "disable summary".
+    If the user says "do all except X", then summarize all other candidates and
+    mark X as pass (unless the user explicitly disables summary for X).
+
+  user: |
+    Batch ID: {{ input.batch_id }}
+
+    Candidates (JSON):
+    {{ input.candidates_json }}
+
+    User instructions:
+    {{ input.user_input }}
+
+    Respond with JSON in this schema:
+    {
+      "batch_id": "...",
+      "actions": [
+        { "index": 1, "arxiv_id": "...", "title": "...", "action": "summarize", "priority": 1 },
+        { "index": 2, "arxiv_id": "...", "title": "...", "action": "disable_summary" },
+        { "index": 3, "arxiv_id": "...", "title": "...", "action": "pass" }
+      ]
+    }
+
+metadata:
+  author: flatagents
+  description: Human-loop JSON formatter for summarizer REPL.
