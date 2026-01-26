@@ -1,0 +1,32 @@
+spec: flatagent
+spec_version: "0.8.0"
+
+data:
+  name: abstract-fixer
+  model: fast
+  system: Fix invalid JSON for abstract analysis. Return only valid JSON with the required keys.
+  user: |
+    Original analysis text:
+    {{ input.text }}
+
+    Invalid JSON:
+    {{ input.invalid_json }}
+
+    Error:
+    {{ input.error }}
+
+    Respond with JSON: {"key_findings": "bullet points of key findings", "methodology": "description of methodology", "contributions": "main contributions"}
+  output:
+    key_findings:
+      type: str
+      description: 3-5 bullet points of key findings
+    methodology:
+      type: str
+      description: Brief description of the methodology
+    contributions:
+      type: str
+      description: Main contributions to the field
+
+metadata:
+  author: flatagents
+  description: Fixes invalid JSON for abstract extraction

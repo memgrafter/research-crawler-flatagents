@@ -1,0 +1,25 @@
+spec: flatagent
+spec_version: "0.8.0"
+
+data:
+  name: abstract-extractor
+  model: fast
+  system: Extract the key findings, methodology, and contributions from the given text. Return only valid JSON.
+  user: |
+    Text: {{ input.text }}
+
+    Respond with JSON: {"key_findings": "bullet points of key findings", "methodology": "description of methodology", "contributions": "main contributions"}
+  output:
+    key_findings:
+      type: str
+      description: 3-5 bullet points of key findings
+    methodology:
+      type: str
+      description: Brief description of the methodology
+    contributions:
+      type: str
+      description: Main contributions to the field
+
+metadata:
+  author: flatagents
+  description: Extracts abstract analysis from raw text output

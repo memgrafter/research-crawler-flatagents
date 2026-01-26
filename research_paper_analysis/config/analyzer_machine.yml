@@ -1,0 +1,166 @@
+# Analyzer Peer Machine
+# Extracts key information from paper abstract and sections
+# Contains 2 agents: abstract_analyzer and section_analyzer
+
+spec: flatmachine
+spec_version: "0.8.0"
+
+data:
+  name: analyzer
+  profiles: ./profiles.yml
+  hooks:
+    module: research_paper_analysis.hooks
+    class: JsonValidationHooks
+
+  context:
+    title: "{{ input.title }}"
+    authors: "{{ input.authors }}"
+    abstract: "{{ input.abstract }}"
+    section_text: "{{ input.section_text }}"
+    # JSON validation state
+    json_fix_required: false
+    json_fix_failed: false
+    json_fix_state: null
+    json_fix_error: null
+    json_fix_raw: null
+    json_fix_source: null
+    # Raw outputs
+    raw_abstract_analysis: null
+    raw_section_analysis: null
+    # Analysis outputs
+    key_findings: null
+    methodology: null
+    contributions: null
+    technical_details: null
+    results: null
+
+  agents:
+    abstract_analyzer: ./abstract_analyzer.yml
+    abstract_extractor: ./abstract_extractor.yml
+    abstract_fixer: ./abstract_fixer.yml
+    section_analyzer: ./section_analyzer.yml
+    section_extractor: ./section_extractor.yml
+    section_fixer: ./section_fixer.yml
+
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: analyze_abstract
+
+    analyze_abstract:
+      agent: abstract_analyzer
+      execution:
+        type: retry
+        backoffs: [2, 8]
+      input:
+        title: "{{ context.title }}"
+        authors: "{{ context.authors }}"
+        abstract: "{{ context.abstract }}"
+      output_to_context:
+        raw_abstract_analysis: "{{ output.content }}"
+      transitions:
+        - to: extract_abstract
+
+    extract_abstract:
+      agent: abstract_extractor
+      execution:
+        type: retry
+        backoffs: [2, 8, 16, 35]
+        jitter: 0.1
+      input:
+        text: "{{ context.raw_abstract_analysis }}"
+      output_to_context:
+        key_findings: "{{ output.key_findings }}"
+        methodology: "{{ output.methodology }}"
+        contributions: "{{ output.contributions }}"
+      transitions:
+        - condition: "context.json_fix_required == true"
+          to: fix_abstract
+        - to: analyze_sections
+
+    fix_abstract:
+      agent: abstract_fixer
+      execution:
+        type: retry
+        backoffs: [2, 8, 16, 35]
+        jitter: 0.1
+      input:
+        text: "{{ context.json_fix_source }}"
+        invalid_json: "{{ context.json_fix_raw }}"
+        error: "{{ context.json_fix_error }}"
+      output_to_context:
+        key_findings: "{{ output.key_findings }}"
+        methodology: "{{ output.methodology }}"
+        contributions: "{{ output.contributions }}"
+      transitions:
+        - condition: "context.json_fix_failed == true"
+          to: json_failure
+        - to: analyze_sections
+
+    analyze_sections:
+      agent: section_analyzer
+      execution:
+        type: retry
+        backoffs: [2, 8]
+      input:
+        title: "{{ context.title }}"
+        key_findings: "{{ context.key_findings }}"
+        section_text: "{{ context.section_text }}"
+      output_to_context:
+        raw_section_analysis: "{{ output.content }}"
+      transitions:
+        - to: extract_sections
+
+    extract_sections:
+      agent: section_extractor
+      execution:
+        type: retry
+        backoffs: [2, 8, 16, 35]
+        jitter: 0.1
+      input:
+        text: "{{ context.raw_section_analysis }}"
+      output_to_context:
+        technical_details: "{{ output.technical_details }}"
+        results: "{{ output.results }}"
+      transitions:
+        - condition: "context.json_fix_required == true"
+          to: fix_sections
+        - to: done
+
+    fix_sections:
+      agent: section_fixer
+      execution:
+        type: retry
+        backoffs: [2, 8, 16, 35]
+        jitter: 0.1
+      input:
+        text: "{{ context.json_fix_source }}"
+        invalid_json: "{{ context.json_fix_raw }}"
+        error: "{{ context.json_fix_error }}"
+      output_to_context:
+        technical_details: "{{ output.technical_details }}"
+        results: "{{ output.results }}"
+      transitions:
+        - condition: "context.json_fix_failed == true"
+          to: json_failure
+        - to: done
+
+    done:
+      type: final
+      output:
+        key_findings: "{{ context.key_findings }}"
+        methodology: "{{ context.methodology }}"
+        contributions: "{{ context.contributions }}"
+        technical_details: "{{ context.technical_details }}"
+        results: "{{ context.results }}"
+
+    json_failure:
+      type: final
+      output:
+        error: "Invalid JSON from {{ context.json_fix_state }}"
+        json_error: "{{ context.json_fix_error }}"
+        json_invalid: "{{ context.json_fix_raw }}"
+
+metadata:
+  description: "Peer machine for paper content analysis"
