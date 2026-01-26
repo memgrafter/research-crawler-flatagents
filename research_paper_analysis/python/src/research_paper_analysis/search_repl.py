@@ -59,12 +59,155 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def _fetch_candidates(conn: sqlite3.Connection, limit: int) -> List[Candidate]:
-    query = """
+def _ensure_fts(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE VIRTUAL TABLE IF NOT EXISTS papers_fts
+        USING fts5(
+            title,
+            abstract,
+            content='papers',
+            content_rowid='id'
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS papers_fts_ai
+        AFTER INSERT ON papers
+        BEGIN
+            INSERT INTO papers_fts(rowid, title, abstract)
+            VALUES (new.id, new.title, new.abstract);
+        END;
+        """
+    )
+    conn.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS papers_fts_ad
+        AFTER DELETE ON papers
+        BEGIN
+            INSERT INTO papers_fts(papers_fts, rowid, title, abstract)
+            VALUES ('delete', old.id, old.title, old.abstract);
+        END;
+        """
+    )
+    conn.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS papers_fts_au
+        AFTER UPDATE ON papers
+        BEGIN
+            INSERT INTO papers_fts(papers_fts, rowid, title, abstract)
+            VALUES ('delete', old.id, old.title, old.abstract);
+            INSERT INTO papers_fts(rowid, title, abstract)
+            VALUES (new.id, new.title, new.abstract);
+        END;
+        """
+    )
+    conn.commit()
+
+
+def _rebuild_fts(conn: sqlite3.Connection) -> None:
+    conn.execute("INSERT INTO papers_fts(papers_fts) VALUES('rebuild')")
+    conn.commit()
+
+def _fts_row_count(conn: sqlite3.Connection) -> int:
+    return conn.execute("SELECT count(*) FROM papers_fts").fetchone()[0]
+
+
+def _papers_row_count(conn: sqlite3.Connection) -> int:
+    return conn.execute("SELECT count(*) FROM papers").fetchone()[0]
+
+
+def _fts_vocab_count(conn: sqlite3.Connection) -> Optional[int]:
+    try:
+        conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS papers_fts_vocab USING fts5vocab('papers_fts', 'row')"
+        )
+        return conn.execute("SELECT count(*) FROM papers_fts_vocab").fetchone()[0]
+    except sqlite3.OperationalError:
+        return None
+
+
+def _debug_fts_state(conn: sqlite3.Connection, query: str) -> None:
+    try:
+        fts_count = _fts_row_count(conn)
+        papers_count = _papers_row_count(conn)
+        vocab_count = _fts_vocab_count(conn)
+        print("FTS debug:")
+        print(f"  papers rows: {papers_count}")
+        print(f"  papers_fts rows: {fts_count}")
+        print(f"  vocab rows: {vocab_count if vocab_count is not None else 'N/A'}")
+        if vocab_count:
+            sample = conn.execute(
+                "SELECT term, doc, cnt FROM papers_fts_vocab ORDER BY term ASC LIMIT 10"
+            ).fetchall()
+            if sample:
+                print("  sample terms:")
+                for term, doc, cnt in sample:
+                    print(f"    {term} (doc={doc}, cnt={cnt})")
+        try:
+            match_count = conn.execute(
+                "SELECT count(*) FROM papers_fts WHERE papers_fts MATCH ?",
+                (query,),
+            ).fetchone()[0]
+            print(f"  match '{query}': {match_count}")
+        except sqlite3.OperationalError as exc:
+            print(f"  match '{query}' error: {exc}")
+    except sqlite3.Error as exc:
+        print(f"FTS debug failed: {exc}")
+
+
+def _ensure_fts_ready(conn: sqlite3.Connection, force_rebuild: bool) -> bool:
+    if force_rebuild:
+        print("Rebuilding FTS index...")
+        _rebuild_fts(conn)
+        return True
+
+    try:
+        fts_count = _fts_row_count(conn)
+    except sqlite3.OperationalError as exc:
+        raise RuntimeError("FTS5 is not available in this SQLite build.") from exc
+
+    if fts_count:
+        vocab_count = _fts_vocab_count(conn)
+        if vocab_count is not None and vocab_count == 0:
+            papers_count = _papers_row_count(conn)
+            if papers_count:
+                print("FTS index has no tokens. Rebuilding index (one-time)...")
+                _rebuild_fts(conn)
+                return True
+        return False
+
+    papers_count = _papers_row_count(conn)
+    if papers_count:
+        print("FTS index is empty. Building index (one-time)...")
+        _rebuild_fts(conn)
+        return True
+    return False
+
+
+def _search_candidates(
+    conn: sqlite3.Connection,
+    query: str,
+    limit: int,
+    only_llm_relevant: bool,
+) -> List[Candidate]:
+    llm_clause = "AND p.llm_relevant = 1" if only_llm_relevant else ""
+    query_sql = """
         WITH latest_versions AS (
             SELECT arxiv_id, MAX(version) AS max_version
             FROM papers
             GROUP BY arxiv_id
+        ),
+        author_agg AS (
+            SELECT
+                pa.paper_id,
+                GROUP_CONCAT(DISTINCT a.display_name) AS authors,
+                MAX(a.h_index) AS max_h_index
+            FROM paper_authors pa
+            JOIN authors a ON a.openalex_id = pa.author_openalex_id
+            GROUP BY pa.paper_id
         )
         SELECT
             p.id,
@@ -73,28 +216,30 @@ def _fetch_candidates(conn: sqlite3.Connection, limit: int) -> List[Candidate]:
             p.abstract,
             pr.fmr_score,
             pc.cited_by_count,
-            GROUP_CONCAT(DISTINCT a.display_name) as authors,
-            MAX(a.h_index) as max_h_index
-        FROM papers p
+            aa.authors,
+            aa.max_h_index
+        FROM papers_fts
+        JOIN papers p ON p.id = papers_fts.rowid
         JOIN latest_versions lv
           ON lv.arxiv_id = p.arxiv_id
          AND lv.max_version = p.version
-        JOIN paper_relevance pr ON pr.paper_id = p.id
+        LEFT JOIN paper_relevance pr ON pr.paper_id = p.id
         LEFT JOIN paper_citations pc ON pc.paper_id = p.id
-        LEFT JOIN paper_authors pa ON pa.paper_id = p.id
-        LEFT JOIN authors a ON a.openalex_id = pa.author_openalex_id
-        LEFT JOIN paper_queue pq ON pq.paper_id = p.id
-        WHERE p.llm_relevant = 1
-          AND p.disable_summary = 0
-          AND (pq.summary_path IS NULL OR pq.summary_path = '')
-        GROUP BY p.id
-        ORDER BY pr.fmr_score DESC,
-                 (MAX(a.h_index) IS NULL) ASC,
-                 MAX(a.h_index) DESC,
-                 pc.cited_by_count DESC
+        LEFT JOIN author_agg aa ON aa.paper_id = p.id
+        WHERE p.disable_summary = 0
+          {llm_clause}
+          AND papers_fts MATCH ?
+          AND NOT EXISTS (
+            SELECT 1
+            FROM paper_queue pq
+            WHERE pq.paper_id = p.id
+              AND pq.summary_path IS NOT NULL
+              AND pq.summary_path != ''
+          )
+        ORDER BY bm25(papers_fts) ASC
         LIMIT ?
     """
-    rows = conn.execute(query, (limit,)).fetchall()
+    rows = conn.execute(query_sql.format(llm_clause=llm_clause), (query, limit)).fetchall()
     candidates: List[Candidate] = []
     for idx, row in enumerate(rows, start=1):
         candidates.append(
@@ -352,21 +497,54 @@ async def _summarize_actions(
             logger.exception("Summarization failed for %s", candidate.arxiv_id)
 
 
-async def run_repl(db_path: Path, limit: int) -> None:
+async def run_repl(
+    db_path: Path,
+    limit: int,
+    query: Optional[str],
+    rebuild_fts: bool,
+    only_llm_relevant: bool,
+) -> None:
     if not db_path.exists():
         raise FileNotFoundError(f"Database not found: {db_path}")
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     _ensure_schema(conn)
+    _ensure_fts(conn)
+    rebuilt = _ensure_fts_ready(conn, rebuild_fts)
+    if rebuilt:
+        fts_count = _fts_row_count(conn)
+        print(f"FTS index ready (rows: {fts_count}).")
 
-    candidates = _fetch_candidates(conn, limit)
-    if not candidates:
-        print("No eligible papers found.")
+    query = (query or "").strip()
+    if not query:
+        query = input("Search query: ").strip()
+    if not query:
+        print("No query provided.")
         conn.close()
         return
 
-    print("\n=== Candidate Papers ===\n")
+    try:
+        candidates = _search_candidates(conn, query, limit, only_llm_relevant)
+    except sqlite3.OperationalError as exc:
+        conn.close()
+        raise RuntimeError(f"Search failed. Check FTS query syntax: {exc}") from exc
+
+    if not candidates:
+        if not rebuilt and _fts_row_count(conn) == 0 and _papers_row_count(conn) > 0:
+            print("FTS index empty. Rebuilding and retrying search...")
+            _rebuild_fts(conn)
+            fts_count = _fts_row_count(conn)
+            print(f"FTS index ready (rows: {fts_count}).")
+            candidates = _search_candidates(conn, query, limit, only_llm_relevant)
+        if not candidates:
+            _debug_fts_state(conn, query)
+            print("No matching papers found.")
+            conn.close()
+            return
+
+    print("\n=== Search Results ===\n")
+    print(f"Query: {query}\n")
     print(_format_candidates(candidates))
     print("\nEnter your instructions. Unmentioned papers default to pass.")
     print("Use phrases like: 'do them all', 'do all except ...', or 'do not summarize ...'.\n")
@@ -452,7 +630,7 @@ async def run_repl(db_path: Path, limit: int) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Human-loop summarizer REPL")
+    parser = argparse.ArgumentParser(description="Search + human-loop summarizer REPL")
     parser.add_argument(
         "--db",
         dest="db_path",
@@ -463,12 +641,29 @@ def main() -> None:
         "--limit",
         type=int,
         default=10,
-        help="Number of candidate papers per batch (default: 10)",
+        help="Number of search matches per batch (default: 10)",
+    )
+    parser.add_argument(
+        "--query",
+        default=None,
+        help="FTS5 search query (prompted if omitted)",
+    )
+    parser.add_argument(
+        "--rebuild-fts",
+        action="store_true",
+        help="Force a rebuild of the FTS index before searching",
+    )
+    parser.add_argument(
+        "--llm-relevant-only",
+        action="store_true",
+        help="Restrict results to papers where llm_relevant = 1",
     )
     args = parser.parse_args()
 
     db_path = Path(args.db_path) if args.db_path else _default_db_path()
-    asyncio.run(run_repl(db_path, args.limit))
+    asyncio.run(
+        run_repl(db_path, args.limit, args.query, args.rebuild_fts, args.llm_relevant_only)
+    )
 
 
 if __name__ == "__main__":

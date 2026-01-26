@@ -11,8 +11,9 @@ data:
 
     Allowed actions: summarize, disable_summary, pass.
     Do NOT use the word "skip".
-    If the user says "never do" or "do not summarize", treat that as disable_summary.
-    If the user says "skip", treat that as pass.
+    You will also receive recommended actions computed from hardcoded rules.
+    Use those recommendations as guidance, but you may override them if the
+    user's instructions clearly indicate a different intent.
     If the user says "do them all" or "do all", mark all candidates as summarize
     unless the user explicitly says "do not summarize" or "disable summary".
     If the user says "do all except X", then summarize all other candidates and
@@ -23,6 +24,9 @@ data:
 
     Candidates (JSON):
     {{ input.candidates_json }}
+
+    Recommended actions (JSON):
+    {{ input.recommendations_json }}
 
     User instructions:
     {{ input.user_input }}
