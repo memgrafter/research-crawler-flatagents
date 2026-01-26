@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS papers (
     journal_ref TEXT,
     comment TEXT,
     llm_relevant INTEGER NOT NULL DEFAULT 0,
+    disable_summary INTEGER NOT NULL DEFAULT 0,
     ingested_at TEXT NOT NULL,
     last_seen_at TEXT NOT NULL,
     source_id INTEGER NOT NULL,
@@ -56,6 +57,7 @@ CREATE TABLE IF NOT EXISTS paper_queue (
     started_at TEXT,
     finished_at TEXT,
     worker TEXT,
+    summary_path TEXT,
     error TEXT,
     UNIQUE (paper_id),
     FOREIGN KEY (paper_id) REFERENCES papers(id)
@@ -68,3 +70,4 @@ CREATE TABLE IF NOT EXISTS crawler_state (
 
 CREATE INDEX IF NOT EXISTS idx_papers_updated_at ON papers(updated_at);
 CREATE INDEX IF NOT EXISTS idx_papers_published_at ON papers(published_at);
+CREATE INDEX IF NOT EXISTS idx_papers_disable_summary ON papers(disable_summary);

@@ -459,14 +459,16 @@ async def run(resume_id: str = None, arxiv_input: Optional[str] = None):
 
     # Save formatted report to data folder
     formatted_report = result.get('formatted_report', '')
+    report_path = ""
     if formatted_report:
         frontmatter = build_frontmatter(paper, source, result, config_dir)
         formatted_report = f"{frontmatter}{formatted_report}"
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         title_slug = slugify_title(paper.title)
         arxiv_prefix = (source.arxiv_id or "unknown").replace("/", "_")
-        report_path = DATA_DIR / f"{arxiv_prefix}_{title_slug}_{timestamp}.md"
-        report_path.write_text(formatted_report)
+        report_path_obj = DATA_DIR / f"{arxiv_prefix}_{title_slug}_{timestamp}.md"
+        report_path_obj.write_text(formatted_report)
+        report_path = str(report_path_obj)
         logger.info(f"\n📄 Report saved to: {report_path}")
     
     logger.info("--- Statistics ---")
@@ -474,6 +476,8 @@ async def run(resume_id: str = None, arxiv_input: Optional[str] = None):
     logger.info(f"Total API calls: {machine.total_api_calls}")
     logger.info(f"Estimated cost: ${machine.total_cost:.4f}")
 
+    if isinstance(result, dict):
+        result["report_path"] = report_path
     return result
 
 
