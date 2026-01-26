@@ -8,16 +8,27 @@ echo "--- Paper Discovery Pipeline ---"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
+# Check whether enrichment is skipped (no OpenAlex needed)
+SKIP_ENRICH=false
+for arg in "$@"; do
+    if [ "$arg" = "--skip-enrich" ]; then
+        SKIP_ENRICH=true
+        break
+    fi
+done
+
 # Check for required env vars
-if [ -z "$OPENALEX_MAILTO" ]; then
-    echo "Error: OPENALEX_MAILTO environment variable not set"
-    echo "Export it before running: export OPENALEX_MAILTO='you@example.com'"
-    exit 1
-fi
-if [ -z "$OPENALEX_API_KEY" ]; then
-    echo "Error: OPENALEX_API_KEY environment variable not set"
-    echo "Export it before running: export OPENALEX_API_KEY='your-key'"
-    exit 1
+if [ "$SKIP_ENRICH" = false ]; then
+    if [ -z "$OPENALEX_MAILTO" ]; then
+        echo "Error: OPENALEX_MAILTO environment variable not set"
+        echo "Export it before running: export OPENALEX_MAILTO='you@example.com'"
+        exit 1
+    fi
+    if [ -z "$OPENALEX_API_KEY" ]; then
+        echo "Error: OPENALEX_API_KEY environment variable not set"
+        echo "Export it before running: export OPENALEX_API_KEY='your-key'"
+        exit 1
+    fi
 fi
 
 if [ -z "$CEREBRAS_API_KEY" ]; then
