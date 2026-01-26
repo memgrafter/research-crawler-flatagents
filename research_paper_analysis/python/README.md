@@ -92,6 +92,17 @@ Run the human-loop summarizer REPL (batch selection + approvals):
 ./run_summarizer_repl.sh --db ../arxiv_crawler/data/arxiv.sqlite --limit 10
 ```
 
+Run the search REPL (FTS5 over title+abstract, then human-loop approvals):
+
+```bash
+./run_search_repl.sh --db ../arxiv_crawler/data/arxiv.sqlite --limit 20 --query "retrieval augmented generation"
+```
+
+Notes:
+- First run may build the FTS index (one-time). Use `--rebuild-fts` to force rebuild.
+- The FTS query supports SQLite FTS5 syntax (phrases, OR, NEAR, etc.).
+- Use `--llm-relevant-only` to restrict results to papers marked `llm_relevant = 1`.
+
 ## Example Output
 
 ```
