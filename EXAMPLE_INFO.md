@@ -208,7 +208,7 @@ data:
   
   model:
     provider: cerebras
-    name: zai-glm-4.6
+    name: zai-glm-4.7
     temperature: 0.6
   
   system: |
