@@ -27,6 +27,15 @@ ARXIV_ID_RE = re.compile(
 )
 
 
+def add_api_key(params: Dict[str, Any]) -> Dict[str, Any]:
+    api_key = os.getenv("OPENALEX_API_KEY")
+    if not api_key or "api_key" in params:
+        return params
+    updated = dict(params)
+    updated["api_key"] = api_key
+    return updated
+
+
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -126,10 +135,12 @@ class RateLimiter:
             self._next_time = max(self._next_time, now) + self._interval
 
 
-def run_async(coro: asyncio.Future) -> Any:
+def run_async(coro: asyncio.Future, timeout: Optional[float] = None) -> Any:
     try:
         asyncio.get_running_loop()
     except RuntimeError:
+        if timeout:
+            return asyncio.run(asyncio.wait_for(coro, timeout))
         return asyncio.run(coro)
 
     result: Dict[str, Any] = {}
@@ -137,7 +148,10 @@ def run_async(coro: asyncio.Future) -> Any:
 
     def runner() -> None:
         try:
-            result["value"] = asyncio.run(coro)
+            if timeout:
+                result["value"] = asyncio.run(asyncio.wait_for(coro, timeout))
+            else:
+                result["value"] = asyncio.run(coro)
         except BaseException as e:
             exception.append(e)
 
@@ -301,28 +315,52 @@ class CitationHooks(MachineHooks):
         max_pages = max(1, int(context.get("max_pages") or 1))
         use_doi = parse_bool(context.get("use_doi"))
         provider = context.get("provider") or "openalex"
+        request_timeout = float(context.get("request_timeout_sec") or 30.0)
+        resolve_timeout = float(context.get("resolve_timeout_sec") or 45.0)
+        citations_timeout = float(context.get("citations_timeout_sec") or 120.0)
+        progress_log_sec = int(context.get("progress_log_sec") or 60)
 
         resolved_count = 0
         authors_enriched = 0
         edge_count = 0
         
         total = len(targets)
+        last_progress_log = time.monotonic()
         for idx, target in enumerate(targets):
             paper_id = target["paper_id"]
             
             # Log progress every 10 papers or at start/end
-            if idx == 0 or (idx + 1) % 10 == 0 or idx == total - 1:
-                self.logger.info("Processing paper %d/%d (resolved=%d, authors=%d)", 
-                                 idx + 1, total, resolved_count, authors_enriched)
+            now = time.monotonic()
+            if (
+                idx == 0
+                or (idx + 1) % 10 == 0
+                or idx == total - 1
+                or (now - last_progress_log) >= progress_log_sec
+            ):
+                self.logger.info(
+                    "Processing paper %d/%d (resolved=%d, authors=%d, edges=%d)",
+                    idx + 1,
+                    total,
+                    resolved_count,
+                    authors_enriched,
+                    edge_count,
+                )
+                last_progress_log = now
             
             # Resolve paper to OpenAlex
-            result = run_async(
-                self._resolve_single_paper(
-                    target=target,
-                    mailto=mailto,
-                    use_doi=use_doi,
+            try:
+                result = run_async(
+                    self._resolve_single_paper(
+                        target=target,
+                        mailto=mailto,
+                        use_doi=use_doi,
+                        request_timeout=request_timeout,
+                    ),
+                    timeout=resolve_timeout,
                 )
-            )
+            except TimeoutError:
+                self.logger.warning("Resolve timeout for paper_id=%s", paper_id)
+                result = None
             
             if not result:
                 # Resolution failed - still record the attempt for cooldown
@@ -359,20 +397,28 @@ class CitationHooks(MachineHooks):
                         author_ids=[aid for aid, _ in author_ids],
                         db_path=db_path,
                         mailto=mailto,
-                    )
+                        request_timeout=request_timeout,
+                    ),
+                    timeout=resolve_timeout,
                 )
                 authors_enriched += new_authors
             
             # Fetch citations for this paper
-            edges = run_async(
-                self._fetch_single_paper_citations(
-                    paper_id=paper_id,
-                    openalex_id=openalex_id,
-                    mailto=mailto,
-                    batch_size=batch_size,
-                    max_pages=max_pages,
+            try:
+                edges = run_async(
+                    self._fetch_single_paper_citations(
+                        paper_id=paper_id,
+                        openalex_id=openalex_id,
+                        mailto=mailto,
+                        batch_size=batch_size,
+                        max_pages=max_pages,
+                        request_timeout=request_timeout,
+                    ),
+                    timeout=citations_timeout,
                 )
-            )
+            except TimeoutError:
+                self.logger.warning("Citation fetch timeout for paper_id=%s", paper_id)
+                edges = []
             edge_count += len(edges or [])
             
             # Save everything for this paper
@@ -399,11 +445,12 @@ class CitationHooks(MachineHooks):
         target: Dict[str, Any],
         mailto: str,
         use_doi: bool,
+        request_timeout: float,
     ) -> Optional[Dict[str, Any]]:
         """Resolve a single paper to OpenAlex ID."""
         headers = {"User-Agent": f"{USER_AGENT} mailto:{mailto}"}
         
-        async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
+        async with httpx.AsyncClient(headers=headers, timeout=request_timeout) as client:
             openalex_id = None
             work_data = None
             
@@ -415,7 +462,7 @@ class CitationHooks(MachineHooks):
                     "per-page": 5,
                     "mailto": mailto,
                 }
-                response = await client.get(OPENALEX_BASE_URL, params=params)
+                response = await client.get(OPENALEX_BASE_URL, params=add_api_key(params))
                 if response.status_code == 200:
                     data = response.json()
                     for work in data.get("results", []):
@@ -436,7 +483,7 @@ class CitationHooks(MachineHooks):
                         "per-page": 5,
                         "mailto": mailto,
                     }
-                    response = await client.get(OPENALEX_BASE_URL, params=params)
+                    response = await client.get(OPENALEX_BASE_URL, params=add_api_key(params))
                     if response.status_code == 200:
                         data = response.json()
                         for work in data.get("results", []):
@@ -457,6 +504,7 @@ class CitationHooks(MachineHooks):
         author_ids: List[str],
         db_path: Path,
         mailto: str,
+        request_timeout: float,
     ) -> int:
         """Fetch missing authors and save them. Returns count of new authors."""
         # Check which are already cached
@@ -479,7 +527,7 @@ class CitationHooks(MachineHooks):
         def short_id(full_id: str) -> str:
             return full_id.replace("https://openalex.org/", "")
         
-        async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
+        async with httpx.AsyncClient(headers=headers, timeout=request_timeout) as client:
             id_filter = "|".join(short_id(aid) for aid in missing[:50])  # Max 50 at a time
             params = {
                 "filter": f"ids.openalex:{id_filter}",
@@ -487,7 +535,10 @@ class CitationHooks(MachineHooks):
                 "mailto": mailto,
             }
             try:
-                response = await client.get("https://api.openalex.org/authors", params=params)
+                response = await client.get(
+                    "https://api.openalex.org/authors",
+                    params=add_api_key(params),
+                )
                 if response.status_code != 200:
                     return 0
                 data = response.json()
@@ -535,12 +586,13 @@ class CitationHooks(MachineHooks):
         mailto: str,
         batch_size: int,
         max_pages: int,
+        request_timeout: float,
     ) -> List[Dict[str, Any]]:
         """Fetch citations for a single paper."""
         headers = {"User-Agent": f"{USER_AGENT} mailto:{mailto}"}
         edges: List[Dict[str, Any]] = []
         
-        async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
+        async with httpx.AsyncClient(headers=headers, timeout=request_timeout) as client:
             cursor = "*"
             pages = 0
             while cursor and pages < max_pages:
@@ -551,7 +603,7 @@ class CitationHooks(MachineHooks):
                     "mailto": mailto,
                 }
                 try:
-                    response = await client.get(OPENALEX_BASE_URL, params=params)
+                    response = await client.get(OPENALEX_BASE_URL, params=add_api_key(params))
                     if response.status_code != 200:
                         break
                     data = response.json()
@@ -836,7 +888,7 @@ class CitationHooks(MachineHooks):
                     try:
                         response = await client.get(
                             "https://api.openalex.org/authors",
-                            params=params,
+                            params=add_api_key(params),
                             timeout=30.0,
                         )
                         response.raise_for_status()
@@ -1095,6 +1147,7 @@ class CitationHooks(MachineHooks):
         params: Dict[str, Any],
         rate_limiter: RateLimiter,
     ) -> Dict[str, Any]:
+        params = add_api_key(params)
         for attempt in range(MAX_RETRIES):
             await rate_limiter.wait()
             try:

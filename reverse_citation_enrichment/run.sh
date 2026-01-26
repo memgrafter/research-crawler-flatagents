@@ -35,6 +35,11 @@ if [ -z "$OPENALEX_MAILTO" ]; then
     echo "Export it before running: export OPENALEX_MAILTO='you@example.com'"
     exit 1
 fi
+if [ -z "$OPENALEX_API_KEY" ]; then
+    echo "Error: OPENALEX_API_KEY environment variable not set"
+    echo "Export it before running: export OPENALEX_API_KEY='your-key'"
+    exit 1
+fi
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"

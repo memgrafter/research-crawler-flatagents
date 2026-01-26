@@ -7,6 +7,7 @@ Unified pipeline that discovers, scores, enriches, and summarizes new AI/ML pape
 ```bash
 # Set required environment variables
 export OPENALEX_MAILTO='your-email@example.com'
+export OPENALEX_API_KEY='your-openalex-key'
 export CEREBRAS_API_KEY='your-cerebras-key'
 
 # Run the pipeline
@@ -96,4 +97,5 @@ Add to crontab for weekly runs:
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `OPENALEX_MAILTO` | Yes | Email for OpenAlex API (polite pool) |
+| `OPENALEX_API_KEY` | Yes | API key for OpenAlex |
 | `CEREBRAS_API_KEY` | Yes | API key for report generation |
