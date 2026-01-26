@@ -1,0 +1,14 @@
+.venv/
+.checkpoints/
+uv.lock
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.DS_Store
+.env
+# demo example
+data/*
+!data/attention_is_all_you_need.pdf

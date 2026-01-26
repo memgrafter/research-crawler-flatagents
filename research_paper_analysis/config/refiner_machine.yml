@@ -1,0 +1,185 @@
+# Refiner Peer Machine (Self-Judging Loop)
+# Creates and iteratively improves summary until quality threshold met
+# Contains 2 agents: synthesizer (creates summary) and critic (judges quality)
+# Loops up to 3 times until quality_score >= 8
+
+spec: flatmachine
+spec_version: "0.8.0"
+
+data:
+  name: refiner
+  profiles: ./profiles.yml
+  hooks:
+    module: research_paper_analysis.hooks
+    class: JsonValidationHooks
+
+  context:
+    # Input from parent
+    title: "{{ input.title }}"
+    authors: "{{ input.authors }}"
+    key_findings: "{{ input.key_findings }}"
+    methodology: "{{ input.methodology }}"
+    contributions: "{{ input.contributions }}"
+    technical_details: "{{ input.technical_details }}"
+    results: "{{ input.results }}"
+    reference_count: "{{ input.reference_count }}"
+    # Raw outputs
+    raw_summary: null
+    raw_critique: null
+    # Refinement state
+    summary: null
+    critique: null
+    quality_score: 0
+    iteration: 0
+    # JSON validation state
+    json_fix_required: false
+    json_fix_failed: false
+    json_fix_state: null
+    json_fix_error: null
+    json_fix_raw: null
+    json_fix_source: null
+
+  agents:
+    synthesizer: ./synthesizer.yml
+    summary_extractor: ./summary_extractor.yml
+    summary_fixer: ./summary_fixer.yml
+    critic: ./critic.yml
+    critique_extractor: ./critique_extractor.yml
+    critique_fixer: ./critique_fixer.yml
+
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: synthesize
+
+    # Generate or improve summary
+    synthesize:
+      agent: synthesizer
+      execution:
+        type: retry
+        backoffs: [2, 8]
+      input:
+        title: "{{ context.title }}"
+        authors: "{{ context.authors }}"
+        key_findings: "{{ context.key_findings }}"
+        methodology: "{{ context.methodology }}"
+        contributions: "{{ context.contributions }}"
+        technical_details: "{{ context.technical_details }}"
+        results: "{{ context.results }}"
+        reference_count: "{{ context.reference_count }}"
+        previous_summary: "{{ context.summary }}"
+        critique: "{{ context.critique }}"
+        iteration: "{{ context.iteration }}"
+      output_to_context:
+        raw_summary: "{{ output.content }}"
+        iteration: "{{ context.iteration + 1 }}"
+      transitions:
+        - to: extract_summary
+
+    extract_summary:
+      agent: summary_extractor
+      execution:
+        type: retry
+        backoffs: [2, 8, 16, 35]
+        jitter: 0.1
+      input:
+        text: "{{ context.raw_summary }}"
+      output_to_context:
+        summary: "{{ output.summary }}"
+      transitions:
+        - condition: "context.json_fix_required == true"
+          to: fix_summary
+        - to: critique
+
+    fix_summary:
+      agent: summary_fixer
+      execution:
+        type: retry
+        backoffs: [2, 8, 16, 35]
+        jitter: 0.1
+      input:
+        text: "{{ context.json_fix_source }}"
+        invalid_json: "{{ context.json_fix_raw }}"
+        error: "{{ context.json_fix_error }}"
+      output_to_context:
+        summary: "{{ output.summary }}"
+      transitions:
+        - condition: "context.json_fix_failed == true"
+          to: json_failure
+        - to: critique
+
+    # Judge the summary quality
+    critique:
+      agent: critic
+      execution:
+        type: retry
+        backoffs: [2, 8]
+      input:
+        title: "{{ context.title }}"
+        summary: "{{ context.summary }}"
+        key_findings: "{{ context.key_findings }}"
+        methodology: "{{ context.methodology }}"
+      output_to_context:
+        raw_critique: "{{ output.content }}"
+      transitions:
+        - to: extract_critique
+
+    extract_critique:
+      agent: critique_extractor
+      execution:
+        type: retry
+        backoffs: [2, 8, 16, 35]
+        jitter: 0.1
+      input:
+        text: "{{ context.raw_critique }}"
+      output_to_context:
+        quality_score: "{{ output.quality_score | int }}"
+        critique: "{{ output.critique }}"
+      transitions:
+        - condition: "context.json_fix_required == true"
+          to: fix_critique
+        # Accept if quality >= 8 or max iterations (3) reached
+        - condition: "context.quality_score >= 8 or context.iteration >= 3"
+          to: done
+        # Otherwise, refine again
+        - to: synthesize
+
+    fix_critique:
+      agent: critique_fixer
+      execution:
+        type: retry
+        backoffs: [2, 8, 16, 35]
+        jitter: 0.1
+      input:
+        text: "{{ context.json_fix_source }}"
+        invalid_json: "{{ context.json_fix_raw }}"
+        error: "{{ context.json_fix_error }}"
+      output_to_context:
+        quality_score: "{{ output.quality_score | int }}"
+        critique: "{{ output.critique }}"
+      transitions:
+        - condition: "context.json_fix_failed == true"
+          to: json_failure
+        # Accept if quality >= 8 or max iterations (3) reached
+        - condition: "context.quality_score >= 8 or context.iteration >= 3"
+          to: done
+        # Otherwise, refine again
+        - to: synthesize
+
+    done:
+      type: final
+      output:
+        summary: "{{ context.summary }}"
+        quality_score: "{{ context.quality_score }}"
+        iterations: "{{ context.iteration }}"
+
+    json_failure:
+      type: final
+      output:
+        error: "Invalid JSON from {{ context.json_fix_state }}"
+        json_error: "{{ context.json_fix_error }}"
+        json_invalid: "{{ context.json_fix_raw }}"
+
+metadata:
+  description: "Self-judging refinement loop for summary quality"

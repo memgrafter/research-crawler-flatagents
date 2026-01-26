@@ -1,0 +1,19 @@
+spec: flatagent
+spec_version: "0.8.0"
+
+data:
+  name: summary-extractor
+  model: fast
+  system: Extract the executive summary from the given text. Return only valid JSON.
+  user: |
+    Text: {{ input.text }}
+
+    Respond with JSON: {"summary": "the full 4-paragraph executive summary"}
+  output:
+    summary:
+      type: str
+      description: 4-paragraph executive summary
+
+metadata:
+  author: flatagents
+  description: Extracts summary from raw text output

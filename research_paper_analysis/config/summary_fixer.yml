@@ -1,0 +1,26 @@
+spec: flatagent
+spec_version: "0.8.0"
+
+data:
+  name: summary-fixer
+  model: fast
+  system: Fix invalid JSON for the executive summary. Return only valid JSON with the required keys.
+  user: |
+    Original summary text:
+    {{ input.text }}
+
+    Invalid JSON:
+    {{ input.invalid_json }}
+
+    Error:
+    {{ input.error }}
+
+    Respond with JSON: {"summary": "the full 4-paragraph executive summary"}
+  output:
+    summary:
+      type: str
+      description: 4-paragraph executive summary
+
+metadata:
+  author: flatagents
+  description: Fixes invalid JSON for summary extraction

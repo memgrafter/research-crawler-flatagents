@@ -1,0 +1,171 @@
+# Research Paper Analysis Pipeline (Main Machine)
+# Production-quality machine topology demo: 2 peer machines + multiple agents
+# Demonstrates: machine peering, self-judging improvement loop, formatted output
+
+spec: flatmachine
+spec_version: "0.8.0"
+
+data:
+  name: research-pipeline
+  profiles: ./profiles.yml
+  hooks:
+    module: research_paper_analysis.hooks
+    class: JsonValidationHooks
+
+  context:
+    # Source metadata (optional)
+    arxiv_id: "{{ input.arxiv_id }}"
+    source_url: "{{ input.source_url }}"
+    # JSON validation state
+    json_fix_required: false
+    json_fix_failed: false
+    json_fix_state: null
+    json_fix_error: null
+    json_fix_raw: null
+    json_fix_source: null
+    # Pre-parsed structured input
+    title: "{{ input.title }}"
+    authors: "{{ input.authors }}"
+    abstract: "{{ input.abstract }}"
+    sections: "{{ input.sections }}"
+    section_text: "{{ input.section_text }}"
+    reference_count: "{{ input.reference_count }}"
+    references_sample: "{{ input.references_sample | tojson }}"
+    # Analysis results (from peer machines)
+    key_findings: null
+    methodology: null
+    contributions: null
+    technical_details: null
+    results: null
+    # Refined summary
+    summary: null
+    quality_score: 0
+    # Raw and final formatted output
+    raw_report: null
+    formatted_report: null
+
+  agents:
+    formatter: ./formatter.yml
+    report_extractor: ./report_extractor.yml
+    report_fixer: ./report_fixer.yml
+
+  # Peer machines
+  machines:
+    analyzer: ./analyzer_machine.yml
+    refiner: ./refiner_machine.yml
+
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: analyze
+
+    # Step 1: Launch analyzer peer machine
+    analyze:
+      machine: analyzer
+      input:
+        title: "{{ context.title }}"
+        authors: "{{ context.authors }}"
+        abstract: "{{ context.abstract }}"
+        section_text: "{{ context.section_text }}"
+      output_to_context:
+        key_findings: "{{ output.key_findings }}"
+        methodology: "{{ output.methodology }}"
+        contributions: "{{ output.contributions }}"
+        technical_details: "{{ output.technical_details }}"
+        results: "{{ output.results }}"
+      transitions:
+        - to: refine
+
+    # Step 2: Launch refiner peer machine (self-judging loop)
+    refine:
+      machine: refiner
+      input:
+        title: "{{ context.title }}"
+        authors: "{{ context.authors }}"
+        key_findings: "{{ context.key_findings }}"
+        methodology: "{{ context.methodology }}"
+        contributions: "{{ context.contributions }}"
+        technical_details: "{{ context.technical_details }}"
+        results: "{{ context.results }}"
+        reference_count: "{{ context.reference_count }}"
+      output_to_context:
+        summary: "{{ output.summary }}"
+        quality_score: "{{ output.quality_score | int }}"
+      transitions:
+        - to: format
+
+    # Step 3: Format as markdown report
+    format:
+      agent: formatter
+      execution:
+        type: retry
+        backoffs: [2, 8]
+      input:
+        title: "{{ context.title }}"
+        authors: "{{ context.authors }}"
+        key_findings: "{{ context.key_findings }}"
+        methodology: "{{ context.methodology }}"
+        contributions: "{{ context.contributions }}"
+        technical_details: "{{ context.technical_details }}"
+        results: "{{ context.results }}"
+        summary: "{{ context.summary }}"
+        quality_score: "{{ context.quality_score }}"
+        reference_count: "{{ context.reference_count }}"
+      output_to_context:
+        raw_report: "{{ output.content }}"
+      transitions:
+        - to: extract_report
+
+    extract_report:
+      agent: report_extractor
+      execution:
+        type: retry
+        backoffs: [2, 8, 16, 35]
+        jitter: 0.1
+      input:
+        text: "{{ context.raw_report }}"
+      output_to_context:
+        formatted_report: "{{ output.report }}"
+      transitions:
+        - condition: "context.json_fix_required == true"
+          to: fix_report
+        - to: done
+
+    fix_report:
+      agent: report_fixer
+      execution:
+        type: retry
+        backoffs: [2, 8, 16, 35]
+        jitter: 0.1
+      input:
+        text: "{{ context.json_fix_source }}"
+        invalid_json: "{{ context.json_fix_raw }}"
+        error: "{{ context.json_fix_error }}"
+      output_to_context:
+        formatted_report: "{{ output.report }}"
+      transitions:
+        - condition: "context.json_fix_failed == true"
+          to: json_failure
+        - to: done
+
+    done:
+      type: final
+      output:
+        title: "{{ context.title }}"
+        key_findings: "{{ context.key_findings }}"
+        summary: "{{ context.summary }}"
+        quality_score: "{{ context.quality_score }}"
+        formatted_report: "{{ context.formatted_report }}"
+        citation_count: "{{ context.reference_count }}"
+
+    json_failure:
+      type: final
+      output:
+        error: "Invalid JSON from {{ context.json_fix_state }}"
+        json_error: "{{ context.json_fix_error }}"
+        json_invalid: "{{ context.json_fix_raw }}"
+
+metadata:
+  description: "Production machine topology demo: analyzer + refiner peer machines"
+  tags: ["machine-peering", "self-judging", "production"]

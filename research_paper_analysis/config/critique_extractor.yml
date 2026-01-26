@@ -1,0 +1,22 @@
+spec: flatagent
+spec_version: "0.8.0"
+
+data:
+  name: critique-extractor
+  model: fast
+  system: Extract the quality score and critique from the given text. Return only valid JSON.
+  user: |
+    Text: {{ input.text }}
+
+    Respond with JSON: {"quality_score": 1-10, "critique": "specific improvements or praise"}
+  output:
+    quality_score:
+      type: int
+      description: Quality score from 1-10
+    critique:
+      type: str
+      description: Specific improvements needed or praise
+
+metadata:
+  author: flatagents
+  description: Extracts critique from raw text output

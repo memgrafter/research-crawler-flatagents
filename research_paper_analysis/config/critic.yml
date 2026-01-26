@@ -1,0 +1,40 @@
+# Critic Agent
+# Judges quality of executive summary and provides improvement suggestions
+spec: flatagent
+spec_version: "0.8.0"
+
+data:
+  name: critic
+
+  model: default
+
+  system: |
+    You are a demanding research paper reviewer. Your job is to critically
+    evaluate executive summaries for completeness, accuracy, and clarity.
+
+    Be specific about what's missing or could be improved.
+    Score harshly - only give 8+ if the summary is truly excellent.
+
+  user: |
+    Evaluate this executive summary of the paper "{{ input.title }}":
+
+    SUMMARY TO EVALUATE:
+    {{ input.summary }}
+
+    EXPECTED KEY FINDINGS (check all are covered):
+    {{ input.key_findings }}
+
+    EXPECTED METHODOLOGY (check it's explained):
+    {{ input.methodology }}
+
+    Rate the summary on a 1-10 scale based on:
+    - Completeness: Does it cover all key findings?
+    - Technical accuracy: Are the details correct?
+    - Clarity: Is it easy to understand?
+    - Specific metrics: Does it include concrete numbers/results?
+    - Impact statement: Does it explain why this matters?
+
+    Be harsh but fair. Only 8+ if truly excellent.
+
+metadata:
+  description: "Judges summary quality and provides critique"
