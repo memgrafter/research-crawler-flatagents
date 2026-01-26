@@ -16,6 +16,10 @@ data:
     concurrency: "{{ input.concurrency | default(5) }}"
     dry_run: "{{ input.dry_run | default(false) }}"
     use_doi: "{{ input.use_doi | default(false) }}"
+    request_timeout_sec: "{{ input.request_timeout_sec | default(30.0) }}"
+    resolve_timeout_sec: "{{ input.resolve_timeout_sec | default(45.0) }}"
+    citations_timeout_sec: "{{ input.citations_timeout_sec | default(120.0) }}"
+    progress_log_sec: "{{ input.progress_log_sec | default(60) }}"
     provider: "openalex"
     run_id: null
     target_count: 0

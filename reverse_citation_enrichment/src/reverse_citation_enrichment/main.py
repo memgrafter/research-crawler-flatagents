@@ -88,6 +88,30 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Only process papers that haven't been author-enriched yet",
     )
+    parser.add_argument(
+        "--request-timeout-sec",
+        type=float,
+        default=30.0,
+        help="HTTP request timeout in seconds",
+    )
+    parser.add_argument(
+        "--resolve-timeout-sec",
+        type=float,
+        default=45.0,
+        help="Per-paper timeout for OpenAlex resolution",
+    )
+    parser.add_argument(
+        "--citations-timeout-sec",
+        type=float,
+        default=120.0,
+        help="Per-paper timeout for citation fetch",
+    )
+    parser.add_argument(
+        "--progress-log-sec",
+        type=int,
+        default=60,
+        help="Emit progress logs at least every N seconds",
+    )
     return parser.parse_args()
 
 
@@ -108,6 +132,10 @@ async def run(args: argparse.Namespace) -> dict:
         "dry_run": args.dry_run,
         "min_score": args.min_score,
         "no_authors_only": args.no_authors_only,
+        "request_timeout_sec": args.request_timeout_sec,
+        "resolve_timeout_sec": args.resolve_timeout_sec,
+        "citations_timeout_sec": args.citations_timeout_sec,
+        "progress_log_sec": args.progress_log_sec,
     }
 
     logger.info("Starting reverse citation enrichment")

@@ -6,12 +6,14 @@ deterministic.
 
 ## Requirements
 - `OPENALEX_MAILTO` must be set for the polite pool.
+- `OPENALEX_API_KEY` must be set for OpenAlex API access.
 - The SQLite database must already contain the `papers` table from `arxiv_crawler/`.
 
 ## Quick Start
 
 ```bash
 export OPENALEX_MAILTO="you@example.com"
+export OPENALEX_API_KEY="your-key"
 ./run.sh -- --limit 100 --dry-run
 ```
 
