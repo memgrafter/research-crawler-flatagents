@@ -18,6 +18,7 @@ import argparse
 import re
 import asyncio
 from urllib.parse import urlparse, urljoin
+from datetime import datetime
 from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Optional
@@ -312,6 +313,12 @@ def parse_paper_programmatically(text: str, pdf_path: Path = None) -> ParsedPape
     )
 
 
+def slugify_title(value: str) -> str:
+    """Create a filesystem-safe slug from a title."""
+    cleaned = re.sub(r'[^A-Za-z0-9]+', '-', value).strip('-').lower()
+    return cleaned or "paper"
+
+
 async def run(resume_id: str = None, arxiv_input: Optional[str] = None):
     """
     Run the research paper analysis pipeline.
@@ -393,7 +400,9 @@ async def run(resume_id: str = None, arxiv_input: Optional[str] = None):
     # Save formatted report to data folder
     formatted_report = result.get('formatted_report', '')
     if formatted_report:
-        report_path = DATA_DIR / 'analysis_report.md'
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        title_slug = slugify_title(paper.title)
+        report_path = DATA_DIR / f"{title_slug}_{timestamp}.md"
         report_path.write_text(formatted_report)
         logger.info(f"\n📄 Report saved to: {report_path}")
     
