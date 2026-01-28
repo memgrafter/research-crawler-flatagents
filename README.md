@@ -24,6 +24,8 @@ cd arxiv_crawler
 ./run.sh -- --max-results 50
 ```
 
+Install behavior: `run.sh` skips dependency installs if required packages are already present in `.venv`. Use `--upgrade`/`-u` to force reinstall/upgrade.
+
 ## Project Plan
 
 ### Relevance + Prioritization Roadmap (Planned)

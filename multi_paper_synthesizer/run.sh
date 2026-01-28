@@ -41,29 +41,51 @@ if [ ! -d "$VENV_DIR" ]; then
 fi
 echo "Virtual environment ready."
 
+is_module_installed() {
+    local module_name="$1"
+    "$VENV_DIR/bin/python" - <<PY >/dev/null 2>&1
+import importlib.util, sys
+sys.exit(0 if importlib.util.find_spec("$module_name") else 1)
+PY
+}
+
+needs_install() {
+    local module
+    for module in "$@"; do
+        if ! is_module_installed "$module"; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 # Install dependencies
 echo "Installing dependencies..."
-if [ "$USE_LOCAL" = true ]; then
-    echo "  - Installing flatagents from local source..."
-    if [ "$UPGRADE" = true ]; then
-        uv pip install --python "$VENV_DIR/bin/python" -U -e "$SDK_DIR" --quiet
+if [ "$UPGRADE" = true ] || needs_install flatagents multi_paper_synthesizer; then
+    if [ "$USE_LOCAL" = true ]; then
+        echo "  - Installing flatagents from local source..."
+        if [ "$UPGRADE" = true ]; then
+            uv pip install --python "$VENV_DIR/bin/python" -U -e "$SDK_DIR" --quiet
+        else
+            uv pip install --python "$VENV_DIR/bin/python" -e "$SDK_DIR" --quiet
+        fi
     else
-        uv pip install --python "$VENV_DIR/bin/python" -e "$SDK_DIR" --quiet
+        echo "  - Installing flatagents from PyPI..."
+        if [ "$UPGRADE" = true ]; then
+            uv pip install --python "$VENV_DIR/bin/python" -U flatagents[litellm] --quiet
+        else
+            uv pip install --python "$VENV_DIR/bin/python" flatagents[litellm] --quiet
+        fi
     fi
-else
-    echo "  - Installing flatagents from PyPI..."
-    if [ "$UPGRADE" = true ]; then
-        uv pip install --python "$VENV_DIR/bin/python" -U flatagents[litellm] --quiet
-    else
-        uv pip install --python "$VENV_DIR/bin/python" flatagents[litellm] --quiet
-    fi
-fi
 
-echo "  - Installing multi_paper_synthesizer package..."
-if [ "$UPGRADE" = true ]; then
-    uv pip install --python "$VENV_DIR/bin/python" -U -e "$SCRIPT_DIR" --quiet
+    echo "  - Installing multi_paper_synthesizer package..."
+    if [ "$UPGRADE" = true ]; then
+        uv pip install --python "$VENV_DIR/bin/python" -U -e "$SCRIPT_DIR" --quiet
+    else
+        uv pip install --python "$VENV_DIR/bin/python" -e "$SCRIPT_DIR" --quiet
+    fi
 else
-    uv pip install --python "$VENV_DIR/bin/python" -e "$SCRIPT_DIR" --quiet
+    echo "  - All dependencies already installed; skipping."
 fi
 
 # Run the demo

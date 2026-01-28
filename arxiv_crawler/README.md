@@ -14,6 +14,8 @@ metadata in SQLite, and queues new entries for downstream processing.
 ./run.sh -- --max-results 50
 ```
 
+Install behavior: `run.sh` skips dependency installs if required packages are already present in `.venv`. Use `--upgrade`/`-u` to force reinstall/upgrade.
+
 Dry run (skips writes to papers/queue):
 
 ```bash

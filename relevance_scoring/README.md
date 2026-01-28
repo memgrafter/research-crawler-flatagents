@@ -10,6 +10,8 @@ anchor phrase similarity.
 ./run.sh -- --limit 200 --dry-run
 ```
 
+Install behavior: `run.sh` skips dependency installs if required packages are already present in `.venv`. Use `--upgrade`/`-u` to force reinstall/upgrade.
+
 Score a batch:
 
 ```bash
