@@ -20,6 +20,8 @@ chmod +x run.sh
 ./run.sh
 ```
 
+Install behavior: `run.sh` skips `npm install` if `node_modules` already exists. Use `--upgrade`/`-u` to force reinstall.
+
 ## Manual Setup
 
 ```bash

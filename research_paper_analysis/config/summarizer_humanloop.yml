@@ -25,20 +25,18 @@ data:
     Candidates (JSON):
     {{ input.candidates_json }}
 
-    Recommended actions (JSON):
+    Recommended actions (JSON, grouped lists of indices):
     {{ input.recommendations_json }}
 
     User instructions:
     {{ input.user_input }}
 
-    Respond with JSON in this schema:
+    Respond with JSON in this schema (lists of candidate indices only):
     {
       "batch_id": "...",
-      "actions": [
-        { "index": 1, "arxiv_id": "...", "title": "...", "action": "summarize", "priority": 1 },
-        { "index": 2, "arxiv_id": "...", "title": "...", "action": "disable_summary" },
-        { "index": 3, "arxiv_id": "...", "title": "...", "action": "pass" }
-      ]
+      "summarize": [1, 2],
+      "disable_summary": [3],
+      "pass": [4, 5]
     }
 
 metadata:

@@ -327,6 +327,65 @@ def _default_priorities(candidates: List[Candidate]) -> Dict[int, int]:
     return {c.index: rank for rank, c in enumerate(candidates, start=1)}
 
 
+def _parse_index_list(value: Any) -> List[int]:
+    if not isinstance(value, list):
+        return []
+    indices: List[int] = []
+    for item in value:
+        idx: Optional[int] = None
+        if isinstance(item, int):
+            idx = item
+        elif isinstance(item, str) and item.isdigit():
+            idx = int(item)
+        elif isinstance(item, dict):
+            raw_idx = item.get("index")
+            if isinstance(raw_idx, int):
+                idx = raw_idx
+            elif isinstance(raw_idx, str) and raw_idx.isdigit():
+                idx = int(raw_idx)
+        if idx is not None:
+            indices.append(idx)
+    return indices
+
+
+def _normalize_actions_from_groups(
+    candidates: List[Candidate],
+    grouped_actions: Dict[str, Any],
+    default_action: str,
+) -> List[Dict[str, Any]]:
+    by_index = {c.index: c for c in candidates}
+    priorities = _default_priorities(candidates)
+
+    summarize_set = set(_parse_index_list(grouped_actions.get("summarize", [])))
+    disable_set = set(
+        _parse_index_list(
+            grouped_actions.get("disable_summary", grouped_actions.get("disable", []))
+        )
+    )
+    pass_set = set(_parse_index_list(grouped_actions.get("pass", [])))
+
+    resolved: Dict[int, Dict[str, Any]] = {}
+    for idx, candidate in by_index.items():
+        if idx in disable_set:
+            action = "disable_summary"
+        elif idx in summarize_set:
+            action = "summarize"
+        elif idx in pass_set:
+            action = "pass"
+        else:
+            action = "summarize" if default_action == "summarize" else "pass"
+        resolved[idx] = {
+            "index": idx,
+            "arxiv_id": candidate.arxiv_id,
+            "title": candidate.title,
+            "action": action,
+            "priority": priorities[idx],
+        }
+
+    ordered = [resolved[idx] for idx in sorted(resolved)]
+    return ordered
+
+
 def _normalize_actions(
     candidates: List[Candidate],
     llm_actions: List[Dict[str, Any]],
@@ -374,12 +433,29 @@ def _normalize_actions(
     return ordered
 
 
+def _group_actions_for_output(actions: List[Dict[str, Any]]) -> Dict[str, List[int]]:
+    grouped = {
+        "summarize": [],
+        "disable_summary": [],
+        "pass": [],
+    }
+    for action in actions:
+        action_name = action.get("action", "pass")
+        idx = action.get("index")
+        if isinstance(idx, int) and action_name in grouped:
+            grouped[action_name].append(idx)
+    for key in grouped:
+        grouped[key] = sorted(set(grouped[key]))
+    return grouped
+
+
 async def _llm_format_actions(
     agent: FlatAgent,
     candidates: List[Candidate],
     user_input: str,
     batch_id: str,
     recommendations_json: str,
+    max_retries: int = 1,
 ) -> Dict[str, Any]:
     candidates_payload = [
         {
@@ -391,25 +467,30 @@ async def _llm_format_actions(
         }
         for c in candidates
     ]
-    response = await agent.call(
-        candidates_json=json.dumps(candidates_payload, ensure_ascii=True),
-        user_input=user_input,
-        batch_id=batch_id,
-        recommendations_json=recommendations_json,
-    )
-    content = None
-    if hasattr(response, "output") and response.output:
-        content = response.output
-    elif hasattr(response, "content") and response.content:
-        content = response.content
-    else:
-        content = response
-    if isinstance(content, dict):
-        return content
-    parsed = _extract_json(str(content))
-    if not parsed:
-        raise ValueError("LLM did not return valid JSON.")
-    return parsed
+    last_content: Optional[str] = None
+    for attempt in range(max_retries + 1):
+        response = await agent.call(
+            candidates_json=json.dumps(candidates_payload, ensure_ascii=True),
+            user_input=user_input,
+            batch_id=batch_id,
+            recommendations_json=recommendations_json,
+        )
+        content = None
+        if hasattr(response, "output") and response.output:
+            content = response.output
+        elif hasattr(response, "content") and response.content:
+            content = response.content
+        else:
+            content = response
+        if isinstance(content, dict):
+            return content
+        parsed = _extract_json(str(content))
+        if parsed:
+            return parsed
+        last_content = str(content)
+        if attempt < max_retries:
+            logger.warning("LLM returned invalid JSON; retrying (%s/%s).", attempt + 1, max_retries)
+    raise ValueError("LLM did not return valid JSON.")
 
 
 def _apply_disable_summary(conn: sqlite3.Connection, candidates_by_index: Dict[int, Candidate], actions: List[Dict[str, Any]]) -> None:
@@ -594,25 +675,26 @@ async def run_repl(
             action = "pass"
         else:
             action = "summarize" if default_action == "summarize" else "pass"
-        recommendations.append(
-            {
-                "index": candidate.index,
-                "arxiv_id": candidate.arxiv_id,
-                "title": candidate.title,
-                "recommended_action": action,
-            }
-        )
-    recommendations_json = json.dumps(recommendations, ensure_ascii=True)
+        recommendations.append({"index": candidate.index, "action": action})
+    recommendations_json = json.dumps(
+        _group_actions_for_output(
+            _normalize_actions(candidates, recommendations, default_action)
+        ),
+        ensure_ascii=True,
+    )
 
     parsed = await _llm_format_actions(agent, candidates, user_input, batch_id, recommendations_json)
-    llm_actions = parsed.get("actions", [])
-    if not isinstance(llm_actions, list):
-        raise ValueError("LLM did not return an action list.")
-
-    normalized_actions = _normalize_actions(candidates, llm_actions, default_action)
+    normalized_actions: List[Dict[str, Any]]
+    if any(key in parsed for key in ("summarize", "disable_summary", "pass")):
+        normalized_actions = _normalize_actions_from_groups(candidates, parsed, default_action)
+    else:
+        llm_actions = parsed.get("actions", [])
+        if not isinstance(llm_actions, list):
+            raise ValueError("LLM did not return grouped actions or an action list.")
+        normalized_actions = _normalize_actions(candidates, llm_actions, default_action)
     payload = {
         "batch_id": batch_id,
-        "actions": normalized_actions,
+        **_group_actions_for_output(normalized_actions),
     }
 
     print("\nProposed actions (review before applying):")
