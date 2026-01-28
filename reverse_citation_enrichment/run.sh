@@ -51,28 +51,50 @@ else
     echo "Virtual environment already exists."
 fi
 
-echo "Installing dependencies..."
-if [ "$LOCAL_INSTALL" = true ]; then
-    echo "  - Installing flatagents from local source..."
-    if [ "$UPGRADE" = true ]; then
-        uv pip install --python "$VENV_PATH/bin/python" -U -e "$SCRIPT_DIR/../..[litellm]"
-    else
-        uv pip install --python "$VENV_PATH/bin/python" -e "$SCRIPT_DIR/../..[litellm]"
-    fi
-else
-    echo "  - Installing flatagents from PyPI..."
-    if [ "$UPGRADE" = true ]; then
-        uv pip install --python "$VENV_PATH/bin/python" -U "flatagents[litellm]"
-    else
-        uv pip install --python "$VENV_PATH/bin/python" "flatagents[litellm]"
-    fi
-fi
+is_module_installed() {
+    local module_name="$1"
+    "$VENV_PATH/bin/python" - <<PY >/dev/null 2>&1
+import importlib.util, sys
+sys.exit(0 if importlib.util.find_spec("$module_name") else 1)
+PY
+}
 
-echo "  - Installing reverse_citation_enrichment package..."
-if [ "$UPGRADE" = true ]; then
-    uv pip install --python "$VENV_PATH/bin/python" -U -e "$SCRIPT_DIR"
+needs_install() {
+    local module
+    for module in "$@"; do
+        if ! is_module_installed "$module"; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+echo "Installing dependencies..."
+if [ "$UPGRADE" = true ] || needs_install flatagents reverse_citation_enrichment; then
+    if [ "$LOCAL_INSTALL" = true ]; then
+        echo "  - Installing flatagents from local source..."
+        if [ "$UPGRADE" = true ]; then
+            uv pip install --python "$VENV_PATH/bin/python" -U -e "$SCRIPT_DIR/../..[litellm]"
+        else
+            uv pip install --python "$VENV_PATH/bin/python" -e "$SCRIPT_DIR/../..[litellm]"
+        fi
+    else
+        echo "  - Installing flatagents from PyPI..."
+        if [ "$UPGRADE" = true ]; then
+            uv pip install --python "$VENV_PATH/bin/python" -U "flatagents[litellm]"
+        else
+            uv pip install --python "$VENV_PATH/bin/python" "flatagents[litellm]"
+        fi
+    fi
+
+    echo "  - Installing reverse_citation_enrichment package..."
+    if [ "$UPGRADE" = true ]; then
+        uv pip install --python "$VENV_PATH/bin/python" -U -e "$SCRIPT_DIR"
+    else
+        uv pip install --python "$VENV_PATH/bin/python" -e "$SCRIPT_DIR"
+    fi
 else
-    uv pip install --python "$VENV_PATH/bin/python" -e "$SCRIPT_DIR"
+    echo "  - All dependencies already installed; skipping."
 fi
 
 echo "Running enrichment..."

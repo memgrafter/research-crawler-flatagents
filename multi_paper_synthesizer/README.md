@@ -76,6 +76,8 @@ export CEREBRAS_API_KEY="your-key"
 ./run.sh --local
 ```
 
+Install behavior: `run.sh` skips dependency installs if required packages are already present in `.venv`. Use `--upgrade`/`-u` to force reinstall/upgrade.
+
 ## Output
 
 The synthesizer produces:

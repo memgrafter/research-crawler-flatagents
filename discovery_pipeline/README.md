@@ -15,6 +15,8 @@ cd discovery_pipeline
 ./run.sh
 ```
 
+Install behavior: `run.sh` skips dependency installs if required packages are already present in `.venv`. Use `--upgrade`/`-u` to force reinstall/upgrade.
+
 ## Usage
 
 ### Automatic Backfill (Normal Case)
@@ -70,6 +72,7 @@ Skip just the enrichment phase:
 | `--skip-score` | Skip relevance scoring |
 | `--skip-enrich` | Skip OpenAlex enrichment |
 | `--dry-run` | Run without making changes |
+| `--upgrade` / `-u` | Reinstall/upgrade dependencies |
 
 ## Pipeline Phases
 
