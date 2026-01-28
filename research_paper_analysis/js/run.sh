@@ -3,10 +3,15 @@ set -e
 
 # --- Parse Arguments ---
 LOCAL_INSTALL=false
+UPGRADE=false
 while [[ $# -gt 0 ]]; do
     case $1 in
         --local|-l)
             LOCAL_INSTALL=true
+            shift
+            ;;
+        --upgrade|-u)
+            UPGRADE=true
             shift
             ;;
         *)
@@ -55,15 +60,26 @@ fi
 
 # 1. Install Dependencies
 echo "📦 Installing dependencies..."
-if [ "$LOCAL_INSTALL" = true ]; then
-    echo "  - Building flatagents from local source..."
-    cd "$JS_SDK_PATH"
-    npm run build
-    cd "$SCRIPT_DIR"
+NEEDS_INSTALL=false
+if [ "$UPGRADE" = true ]; then
+    NEEDS_INSTALL=true
+elif [ ! -d "$SCRIPT_DIR/node_modules" ]; then
+    NEEDS_INSTALL=true
 fi
 
-echo "  - Installing research_paper_analysis demo package..."
-npm install
+if [ "$NEEDS_INSTALL" = true ]; then
+    if [ "$LOCAL_INSTALL" = true ]; then
+        echo "  - Building flatagents from local source..."
+        cd "$JS_SDK_PATH"
+        npm run build
+        cd "$SCRIPT_DIR"
+    fi
+
+    echo "  - Installing research_paper_analysis demo package..."
+    npm install
+else
+    echo "  - All dependencies already installed; skipping."
+fi
 
 # 2. Build TypeScript
 echo "🏗️  Building TypeScript..."

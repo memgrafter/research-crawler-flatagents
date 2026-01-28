@@ -77,6 +77,8 @@ export CEREBRAS_API_KEY="your-key"
 ./run.sh
 ```
 
+Install behavior: `run.sh` skips dependency installs if required packages are already present in `.venv`. Use `--upgrade`/`-u` to force reinstall/upgrade.
+
 Analyze a specific arXiv paper by ID or URL:
 
 ```bash
@@ -92,10 +94,22 @@ Run the human-loop summarizer REPL (batch selection + approvals):
 ./run_summarizer_repl.sh --db ../arxiv_crawler/data/arxiv.sqlite --limit 10
 ```
 
+Force reinstall/upgrade before running the REPL:
+
+```bash
+./run_summarizer_repl.sh --upgrade --db ../arxiv_crawler/data/arxiv.sqlite --limit 10
+```
+
 Run the search REPL (FTS5 over title+abstract, then human-loop approvals):
 
 ```bash
 ./run_search_repl.sh --db ../arxiv_crawler/data/arxiv.sqlite --limit 20 --query "retrieval augmented generation"
+```
+
+Force reinstall/upgrade before running the REPL:
+
+```bash
+./run_search_repl.sh --upgrade --db ../arxiv_crawler/data/arxiv.sqlite --limit 20 --query "retrieval augmented generation"
 ```
 
 Notes:
