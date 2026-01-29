@@ -407,6 +407,15 @@ async def run(resume_id: str = None, arxiv_input: Optional[str] = None):
     logger.info(f"References: {len(paper.references)}")
     logger.info("-" * 60)
 
+    # Early validation: fail fast if paper is unparseable
+    # Avoids wasting LLM API calls on papers with no extractable content
+    if len(paper.sections) == 0 and len(paper.abstract) < 50:
+        raise ValueError(
+            f"Paper appears unparseable: 0 sections and {len(paper.abstract)} chars in abstract. "
+            f"This PDF may have a non-standard format or be an image-based scan. "
+            f"Skipping to avoid wasteful LLM calls."
+        )
+
     # Step 4: Run FlatMachine for LLM-based analysis
     config_dir = Path(__file__).parent.parent.parent.parent / 'config'
     config_path = config_dir / 'machine.yml'

@@ -1,0 +1,60 @@
+spec: flatmachine
+spec_version: "0.8.3"
+
+data:
+  name: paper_analysis_checker
+  
+  # Parallelization checker for paper analysis workers
+  # Checks queue depth vs active workers and spawns new workers
+  
+  context:
+    max_workers: "{{ input.max_workers | default(3) }}"
+    # Path to worker config (relative to this file's directory)
+    worker_config_path: "paper_analysis_worker.yml"
+  
+  hooks:
+    module: research_paper_analysis.distributed_hooks
+    class: DistributedPaperAnalysisHooks
+  
+  machines:
+    paper_analysis_worker:
+      config: paper_analysis_worker.yml
+  
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: check_state
+    
+    check_state:
+      action: get_pool_state
+      output_to_context:
+        queue_depth: "{{ output.queue_depth }}"
+        active_workers: "{{ output.active_workers }}"
+      transitions:
+        - to: calculate_spawn
+    
+    calculate_spawn:
+      action: calculate_spawn
+      transitions:
+        - condition: "context.workers_to_spawn > 0"
+          to: spawn_workers
+        - to: done
+    
+    spawn_workers:
+      # Use action-based spawning (hook handles subprocess launch)
+      action: spawn_workers
+      output_to_context:
+        spawned_ids: "{{ output.spawned_ids }}"
+      transitions:
+        - to: done
+    
+    done:
+      type: final
+      output:
+        spawned: "{{ context.workers_to_spawn | default(0) }}"
+        queue_depth: "{{ context.queue_depth }}"
+        active_workers: "{{ context.active_workers }}"
+
+metadata:
+  description: "Parallelization checker for paper analysis workers"
