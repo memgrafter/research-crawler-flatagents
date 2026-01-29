@@ -18,7 +18,7 @@ data:
     class: DistributedPaperAnalysisHooks
   
   machines:
-    analyzer: ./analyzer_machine.yml
+    analyzer: ./machine.yml
   
   states:
     start:
@@ -42,6 +42,19 @@ data:
       transitions:
         - condition: "context.paper == None"
           to: no_work
+        - to: prepare_paper
+    
+    prepare_paper:
+      action: prepare_paper
+      output_to_context:
+        section_text: "{{ output.section_text }}"
+        reference_count: "{{ output.reference_count }}"
+        references_sample: "{{ output.references_sample }}"
+        prepared: "{{ output.prepared }}"
+      on_error: paper_failed
+      transitions:
+        - condition: "context.prepared == false"
+          to: paper_failed
         - to: analyze_paper
     
     analyze_paper:
@@ -50,7 +63,9 @@ data:
         title: "{{ context.paper.title }}"
         authors: "{{ context.paper.authors }}"
         abstract: "{{ context.paper.abstract }}"
-        section_text: ""
+        section_text: "{{ context.section_text }}"
+        reference_count: "{{ context.reference_count }}"
+        references_sample: "{{ context.references_sample }}"
       output_to_context:
         analysis_result: "{{ output }}"
       on_error: paper_failed

@@ -10,12 +10,16 @@ Uses the arxiv_crawler SQLite database with the worker_registry_migration.sql sc
 from __future__ import annotations
 
 import os
+import re
 import socket
 import asyncio
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+
+import httpx
+from pypdf import PdfReader
 
 from flatagents import (
     DistributedWorkerHooks,
@@ -34,6 +38,15 @@ DEFAULT_DB_PATH = str(
     Path(__file__).parent.parent.parent.parent.parent / 
     "arxiv_crawler" / "data" / "arxiv.sqlite"
 )
+
+# Data directory for reports (same location as main.py uses)
+DATA_DIR = Path(__file__).parent.parent.parent.parent.parent / "research_paper_analysis" / "data"
+
+
+def slugify_title(value: str) -> str:
+    """Create a filesystem-safe slug from a title."""
+    cleaned = re.sub(r'[^A-Za-z0-9]+', '-', value).strip('-').lower()
+    return cleaned or "paper"
 
 
 class DistributedPaperAnalysisHooks(JsonValidationHooks):
@@ -75,6 +88,7 @@ class DistributedPaperAnalysisHooks(JsonValidationHooks):
             "calculate_spawn": self._calculate_spawn,
             "spawn_workers": self._spawn_workers,
             "claim_paper": self._claim_paper,
+            "prepare_paper": self._prepare_paper,
             "complete_paper": self._complete_paper,
             "fail_paper": self._fail_paper,
             "list_stale_workers": self._list_stale_workers,
@@ -241,14 +255,122 @@ class DistributedPaperAnalysisHooks(JsonValidationHooks):
             context["paper"] = None
             return context
     
+    async def _prepare_paper(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Download and parse PDF to prepare full input for analysis."""
+        paper = context.get("paper") or {}
+        arxiv_id = paper.get("arxiv_id")
+        
+        if not arxiv_id:
+            context["prepared"] = False
+            context["error"] = "No arxiv_id in paper context"
+            return context
+        
+        try:
+            # Download PDF
+            pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+            pdf_path = DATA_DIR / f"{arxiv_id.replace('/', '_')}.pdf"
+            txt_path = DATA_DIR / f"{arxiv_id.replace('/', '_')}.txt"
+            
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            
+            if not pdf_path.exists():
+                logger.info(f"Downloading paper: {pdf_url}")
+                response = httpx.get(pdf_url, follow_redirects=True, timeout=60.0)
+                response.raise_for_status()
+                pdf_path.write_bytes(response.content)
+            
+            # Extract text from PDF
+            if txt_path.exists():
+                full_text = txt_path.read_text()
+            else:
+                logger.info(f"Extracting text from: {pdf_path}")
+                reader = PdfReader(pdf_path)
+                pages = []
+                for i, page in enumerate(reader.pages):
+                    text = page.extract_text() or ""
+                    pages.append(f"[PAGE {i+1}]\n{text}")
+                full_text = "\n\n".join(pages)
+                txt_path.write_text(full_text)
+            
+            # Parse sections (simplified version of main.py logic)
+            section_pattern = r'\n(\d+(?:\.\d+)?)\s+([A-Z][^\n]{3,60})\n'
+            section_matches = list(re.finditer(section_pattern, full_text))
+            
+            sections = []
+            for i, match in enumerate(section_matches[:6]):  # First 6 sections
+                section_num = match.group(1)
+                section_title = match.group(2).strip()
+                start_pos = match.end()
+                
+                if i + 1 < len(section_matches):
+                    end_pos = section_matches[i + 1].start()
+                else:
+                    ref_match = re.search(r'\nReferences\s*\n', full_text[start_pos:])
+                    end_pos = start_pos + ref_match.start() if ref_match else len(full_text)
+                
+                content = full_text[start_pos:end_pos].strip()[:3000]
+                sections.append(f"=== {section_num} {section_title} ===\n{content}")
+            
+            section_text = "\n\n".join(sections)
+            
+            # Extract references count
+            ref_match = re.search(r'\nReferences\s*\n(.*)', full_text, re.DOTALL | re.IGNORECASE)
+            references = []
+            if ref_match:
+                ref_text = ref_match.group(1)
+                refs = re.split(r'\n\s*\[?\d+\]?\s*', ref_text)
+                references = [r.strip()[:200] for r in refs if len(r.strip()) > 20][:40]
+            
+            # Update context with prepared data
+            context["section_text"] = section_text
+            context["reference_count"] = len(references)
+            context["references_sample"] = references[:10]
+            context["prepared"] = True
+            
+            logger.info(f"Prepared paper {arxiv_id}: {len(sections)} sections, {len(references)} refs")
+            
+        except Exception as e:
+            logger.error(f"Failed to prepare paper {arxiv_id}: {e}")
+            context["prepared"] = False
+            context["error"] = str(e)
+        
+        return context
+    
     async def _complete_paper(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Mark paper analysis as complete."""
+        """Mark paper analysis as complete and write report to disk."""
         queue_id = context.get("queue_id")
-        summary_path = context.get("summary_path")
+        paper = context.get("paper") or {}
+        analysis_result = context.get("analysis_result") or {}
         
         if not queue_id:
             raise ValueError("queue_id is required for complete_paper")
         
+        # Write report to disk if we have formatted_report from machine.yml
+        summary_path = context.get("summary_path")
+        formatted_report = analysis_result.get("formatted_report")
+        
+        if not summary_path and formatted_report:
+            try:
+                DATA_DIR.mkdir(parents=True, exist_ok=True)
+                
+                title = paper.get("title") or analysis_result.get("title") or "Untitled"
+                arxiv_id = paper.get("arxiv_id", "unknown")
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                
+                title_slug = slugify_title(title)
+                arxiv_prefix = arxiv_id.replace("/", "_")
+                filename = f"{arxiv_prefix}_{title_slug}_{timestamp}.md"
+                file_path = DATA_DIR / filename
+                
+                file_path.write_text(formatted_report)
+                
+                summary_path = str(file_path)
+                context["summary_path"] = summary_path
+                logger.info(f"Wrote report to {summary_path}")
+                
+            except Exception as e:
+                logger.error(f"Failed to write report file: {e}")
+
         async with self._lock:
             conn = self._get_conn()
             cursor = conn.cursor()
