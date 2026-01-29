@@ -8,6 +8,10 @@ VENV_PATH=".venv"
 LOCAL_INSTALL=false
 UPGRADE=false
 SHOW_HELP=false
+JSON_LOG=false
+MAX_WORKERS=3
+LIMIT=""
+DB_PATH_OVERRIDE=""
 PASSTHROUGH_ARGS=()
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -18,6 +22,25 @@ while [[ $# -gt 0 ]]; do
         --upgrade|-u)
             UPGRADE=true
             shift
+            ;;
+        --json-log|-j)
+            JSON_LOG=true
+            shift
+            ;;
+        --limit)
+            LIMIT="$2"
+            PASSTHROUGH_ARGS+=("$1" "$2")
+            shift 2
+            ;;
+        --db)
+            DB_PATH_OVERRIDE="$2"
+            PASSTHROUGH_ARGS+=("$1" "$2")
+            shift 2
+            ;;
+        -w|--workers)
+            MAX_WORKERS="$2"
+            PASSTHROUGH_ARGS+=("$1" "$2")
+            shift 2
             ;;
         -h|--help)
             SHOW_HELP=true
@@ -54,6 +77,26 @@ find_project_root() {
 PROJECT_ROOT="$(find_project_root "$SCRIPT_DIR")"
 
 PYTHON_SDK_PATH="$PROJECT_ROOT/flatagents"
+
+DEFAULT_DB_PATH="$PROJECT_ROOT/arxiv_crawler/data/arxiv.sqlite"
+DB_PATH="$DEFAULT_DB_PATH"
+if [ -n "$DB_PATH_OVERRIDE" ]; then
+    DB_PATH="$DB_PATH_OVERRIDE"
+fi
+
+count_summarizer_pending() {
+    if ! command -v sqlite3 >/dev/null 2>&1; then
+        echo ""
+        return 0
+    fi
+    if [ ! -f "$DB_PATH" ]; then
+        echo ""
+        return 0
+    fi
+    sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM paper_queue WHERE status IN ('pending','processing') AND priority > 0" 2>/dev/null || true
+}
+
+BASE_PENDING="$(count_summarizer_pending)"
 
 # Create venv if missing
 if [ ! -d "$VENV_PATH" ]; then
@@ -110,13 +153,70 @@ else
 fi
 
 if [ "$SHOW_HELP" = true ]; then
-    echo "Wrapper options: --local/-l (use local flatagents), --upgrade/-u (reinstall/upgrade deps)."
+    echo "Wrapper options: --local/-l (use local flatagents), --upgrade/-u (reinstall/upgrade deps), --json-log/-j (JSON log format), -w/--workers (max workers)."
 fi
 
 # Run
 echo "🚀 Starting search REPL..."
 echo "---"
+
+# Set up logging directory for flatagents workers
+LOG_DIR="$SCRIPT_DIR/logs"
+mkdir -p "$LOG_DIR"
+export FLATAGENTS_LOG_DIR="$LOG_DIR"
+export FLATAGENTS_LOG_LEVEL="DEBUG"
+if [ "$JSON_LOG" = true ]; then
+    export FLATAGENTS_LOG_FORMAT="json"
+    echo "📝 Logs (JSON): $LOG_DIR"
+else
+    export FLATAGENTS_LOG_FORMAT="standard"
+    echo "📝 Logs: $LOG_DIR"
+fi
+
+# Start the scaling daemon in background
+echo "🔄 Starting scale daemon (background, max_workers=$MAX_WORKERS)..."
+"$VENV_PATH/bin/python" "$SCRIPT_DIR/run_checker.py" --daemon -m "$MAX_WORKERS" > "$LOG_DIR/scale_daemon.log" 2>&1 &
+DAEMON_PID=$!
+DAEMON_STOPPED=false
+echo "   Daemon PID: $DAEMON_PID (will continue after REPL exits)"
+echo "   To stop: kill $DAEMON_PID"
+
 "$VENV_PATH/bin/python" -m research_paper_analysis.search_repl "${PASSTHROUGH_ARGS[@]}"
 echo "---"
 
+if [[ "$BASE_PENDING" =~ ^[0-9]+$ ]]; then
+    AFTER_PENDING="$(count_summarizer_pending)"
+    if [[ "$AFTER_PENDING" =~ ^[0-9]+$ ]]; then
+        if (( AFTER_PENDING <= BASE_PENDING )); then
+            echo "🛑 No new prioritized jobs queued; stopping scale daemon."
+            kill "$DAEMON_PID" 2>/dev/null || true
+            DAEMON_STOPPED=true
+        else
+            NEW_TASKS=$((AFTER_PENDING - BASE_PENDING))
+            if [ -n "$LIMIT" ]; then
+                echo "⏳ Waiting for $NEW_TASKS of $LIMIT selected prioritized job(s) to finish..."
+            else
+                echo "⏳ Waiting for $NEW_TASKS selected prioritized job(s) to finish..."
+            fi
+            while true; do
+                CURRENT="$(count_summarizer_pending)"
+                if [[ "$CURRENT" =~ ^[0-9]+$ ]] && (( CURRENT <= BASE_PENDING )); then
+                    echo "✅ Selected prioritized jobs finished; stopping scale daemon."
+                    kill "$DAEMON_PID" 2>/dev/null || true
+                    DAEMON_STOPPED=true
+                    break
+                fi
+                sleep 2
+            done
+        fi
+    fi
+fi
+
 echo "✅ Search REPL complete!"
+if [ "$DAEMON_STOPPED" = true ]; then
+    echo "   Scale daemon stopped."
+else
+    echo "   Scale daemon still running (PID: $DAEMON_PID)"
+    echo "   To stop: kill $DAEMON_PID"
+fi
+echo "   Daemon log: $LOG_DIR/scale_daemon.log"

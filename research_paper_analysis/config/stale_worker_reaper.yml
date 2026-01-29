@@ -22,24 +22,24 @@ data:
     find_stale_workers:
       action: list_stale_workers
       output_to_context:
-        stale_workers: "{{ output.workers }}"
+        stale_workers: output.workers
+        stale_count: output.stale_count
+        reaped_count: output.stale_count
       transitions:
-        - condition: "context.stale_workers | length == 0"
+        - condition: "context.stale_count == 0"
           to: done
         - to: reap_workers
     
     reap_workers:
-      foreach: "{{ context.stale_workers }}"
-      as: worker
-      action: reap_worker
+      action: reap_workers
       transitions:
         - to: done
     
     done:
       type: final
       output:
-        reaped_count: "{{ context.stale_workers | length }}"
-        stale_workers: "{{ context.stale_workers }}"
+        reaped_count: context.reaped_count
+        stale_workers: context.stale_workers
 
 metadata:
   description: "Stale worker reaper - finds dead workers and releases their papers"
