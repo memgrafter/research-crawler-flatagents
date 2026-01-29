@@ -1,0 +1,113 @@
+spec: flatmachine
+spec_version: "0.8.3"
+
+data:
+  name: paper_analysis_worker
+  
+  # Job worker for paper analysis
+  # Claims a paper, runs analyzer_machine, writes result
+  
+  settings:
+    heartbeat_interval: 60  # seconds
+  
+  context:
+    worker_id: "{{ input.worker_id }}"
+  
+  hooks:
+    module: research_paper_analysis.distributed_hooks
+    class: DistributedPaperAnalysisHooks
+  
+  machines:
+    analyzer: ./machine.yml
+  
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: register_worker
+    
+    register_worker:
+      action: register_worker
+      output_to_context:
+        registered_at: "{{ output.registered_at }}"
+      transitions:
+        - to: claim_paper
+    
+    claim_paper:
+      action: claim_paper
+      output_to_context:
+        queue_id: "{{ output.queue_id }}"
+        paper_id: "{{ output.paper_id }}"
+        paper: "{{ output.paper }}"
+      transitions:
+        - condition: "context.paper == None"
+          to: no_work
+        - to: prepare_paper
+    
+    prepare_paper:
+      action: prepare_paper
+      output_to_context:
+        section_text: "{{ output.section_text }}"
+        reference_count: "{{ output.reference_count }}"
+        references_sample: "{{ output.references_sample }}"
+        prepared: "{{ output.prepared }}"
+      on_error: paper_failed
+      transitions:
+        - condition: "context.prepared == false"
+          to: paper_failed
+        - to: analyze_paper
+    
+    analyze_paper:
+      machine: analyzer
+      input:
+        title: "{{ context.paper.title }}"
+        authors: "{{ context.paper.authors }}"
+        abstract: "{{ context.paper.abstract }}"
+        section_text: "{{ context.section_text }}"
+        reference_count: "{{ context.reference_count }}"
+        references_sample: "{{ context.references_sample }}"
+      output_to_context:
+        analysis_result: "{{ output }}"
+      on_error: paper_failed
+      transitions:
+        - condition: "context.analysis_result.error != None"
+          to: paper_failed
+        - to: save_result
+    
+    save_result:
+      # Write result to file and update paper_queue
+      action: complete_paper
+      transitions:
+        - to: deregister
+    
+    paper_failed:
+      action: fail_paper
+      transitions:
+        - to: deregister
+    
+    deregister:
+      action: deregister_worker
+      transitions:
+        - to: done
+    
+    no_work:
+      action: deregister_worker
+      transitions:
+        - to: no_work_final
+    
+    no_work_final:
+      type: final
+      output:
+        status: "no_work_available"
+        worker_id: "{{ context.worker_id }}"
+    
+    done:
+      type: final
+      output:
+        queue_id: "{{ context.queue_id }}"
+        paper_id: "{{ context.paper_id }}"
+        result: "{{ context.analysis_result }}"
+        worker_id: "{{ context.worker_id }}"
+
+metadata:
+  description: "Paper analysis worker - claims paper, analyzes, writes result"
