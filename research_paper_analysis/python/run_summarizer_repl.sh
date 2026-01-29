@@ -8,6 +8,7 @@ VENV_PATH=".venv"
 LOCAL_INSTALL=false
 UPGRADE=false
 SHOW_HELP=false
+JSON_LOG=false
 PASSTHROUGH_ARGS=()
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -17,6 +18,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --upgrade|-u)
             UPGRADE=true
+            shift
+            ;;
+        --json-log|-j)
+            JSON_LOG=true
             shift
             ;;
         -h|--help)
@@ -113,12 +118,26 @@ else
 fi
 
 if [ "$SHOW_HELP" = true ]; then
-    echo "Wrapper options: --local/-l (use local flatagents), --upgrade/-u (reinstall/upgrade deps)."
+    echo "Wrapper options: --local/-l (use local flatagents), --upgrade/-u (reinstall/upgrade deps), --json-log/-j (JSON log format)."
 fi
 
 # Run
 echo "🚀 Starting summarizer REPL..."
 echo "---"
+
+# Set up logging directory for flatagents workers
+LOG_DIR="$SCRIPT_DIR/logs"
+mkdir -p "$LOG_DIR"
+export FLATAGENTS_LOG_DIR="$LOG_DIR"
+export FLATAGENTS_LOG_LEVEL="DEBUG"
+if [ "$JSON_LOG" = true ]; then
+    export FLATAGENTS_LOG_FORMAT="json"
+    echo "📝 Logs (JSON): $LOG_DIR"
+else
+    export FLATAGENTS_LOG_FORMAT="standard"
+    echo "📝 Logs: $LOG_DIR"
+fi
+
 "$VENV_PATH/bin/python" -m research_paper_analysis.summarizer_repl "${PASSTHROUGH_ARGS[@]}"
 echo "---"
 
