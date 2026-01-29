@@ -9,6 +9,7 @@ LOCAL_INSTALL=false
 UPGRADE=false
 SHOW_HELP=false
 JSON_LOG=false
+MAX_WORKERS=3
 PASSTHROUGH_ARGS=()
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -23,6 +24,11 @@ while [[ $# -gt 0 ]]; do
         --json-log|-j)
             JSON_LOG=true
             shift
+            ;;
+        -w|--workers)
+            MAX_WORKERS="$2"
+            PASSTHROUGH_ARGS+=("$1" "$2")
+            shift 2
             ;;
         -h|--help)
             SHOW_HELP=true
@@ -138,7 +144,16 @@ else
     echo "📝 Logs: $LOG_DIR"
 fi
 
+# Start the scaling daemon in background
+echo "🔄 Starting scale daemon (background, max_workers=$MAX_WORKERS)..."
+"$VENV_PATH/bin/python" "$SCRIPT_DIR/run_checker.py" --daemon -m "$MAX_WORKERS" > "$LOG_DIR/scale_daemon.log" 2>&1 &
+DAEMON_PID=$!
+echo "   Daemon PID: $DAEMON_PID (will continue after REPL exits)"
+echo "   To stop: kill $DAEMON_PID"
+
 "$VENV_PATH/bin/python" -m research_paper_analysis.summarizer_repl "${PASSTHROUGH_ARGS[@]}"
 echo "---"
 
 echo "✅ Summarizer REPL complete!"
+echo "   Scale daemon still running (PID: $DAEMON_PID)"
+echo "   Daemon log: $LOG_DIR/scale_daemon.log"

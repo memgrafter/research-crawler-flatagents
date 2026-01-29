@@ -91,6 +91,7 @@ class DistributedPaperAnalysisHooks(JsonValidationHooks):
             "prepare_paper": self._prepare_paper,
             "complete_paper": self._complete_paper,
             "fail_paper": self._fail_paper,
+            "deregister_worker": self._deregister_worker,
             "list_stale_workers": self._list_stale_workers,
             "reap_worker": self._reap_worker,
         }
@@ -101,9 +102,10 @@ class DistributedPaperAnalysisHooks(JsonValidationHooks):
             return await handler(context)
         
         # Delegate to SDK hooks for standard actions
-        # (register_worker, deregister_worker, heartbeat, calculate_spawn, spawn_workers)
+        # (register_worker, heartbeat, calculate_spawn, spawn_workers)
+        # Note: deregister_worker is handled locally to add scaling trigger
         sdk_actions = {
-            "register_worker", "deregister_worker", "heartbeat",
+            "register_worker", "heartbeat",
             "calculate_spawn", "spawn_workers",
         }
         if action in sdk_actions:
@@ -436,6 +438,25 @@ class DistributedPaperAnalysisHooks(JsonValidationHooks):
                 conn.commit()
             
             return context
+    
+    async def _deregister_worker(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Deregister worker and trigger scaling event."""
+        worker_id = context.get("worker_id")
+        
+        # Call SDK deregister
+        context = await self._sdk_hooks.on_action("deregister_worker", context)
+        
+        # Insert scaling event to trigger worker replenishment
+        async with self._lock:
+            conn = self._get_conn()
+            conn.execute(
+                "INSERT INTO scaling_events (event_type, worker_id) VALUES (?, ?)",
+                ("worker_done", worker_id)
+            )
+            conn.commit()
+            logger.info(f"Triggered scaling event for worker {worker_id}")
+        
+        return context
     
     # -------------------------------------------------------------------------
     # Stale Worker Reaper (custom for paper_queue release)
