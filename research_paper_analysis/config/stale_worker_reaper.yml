@@ -1,0 +1,45 @@
+spec: flatmachine
+spec_version: "0.8.3"
+
+data:
+  name: stale_worker_reaper
+  
+  # Finds workers that have missed heartbeats and releases their papers
+  
+  context:
+    stale_threshold_seconds: "{{ input.stale_threshold_seconds | default(120) }}"
+  
+  hooks:
+    module: research_paper_analysis.distributed_hooks
+    class: DistributedPaperAnalysisHooks
+  
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: find_stale_workers
+    
+    find_stale_workers:
+      action: list_stale_workers
+      output_to_context:
+        stale_workers: "{{ output.workers }}"
+      transitions:
+        - condition: "context.stale_workers | length == 0"
+          to: done
+        - to: reap_workers
+    
+    reap_workers:
+      foreach: "{{ context.stale_workers }}"
+      as: worker
+      action: reap_worker
+      transitions:
+        - to: done
+    
+    done:
+      type: final
+      output:
+        reaped_count: "{{ context.stale_workers | length }}"
+        stale_workers: "{{ context.stale_workers }}"
+
+metadata:
+  description: "Stale worker reaper - finds dead workers and releases their papers"

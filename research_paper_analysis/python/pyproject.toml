@@ -2,7 +2,14 @@
 name = "research_paper_analysis"
 version = "0.1.0"
 description = "Paper analysis with machine peering and checkpoint/resume for FlatAgents"
-dependencies = ["flatagents[litellm]", "pypdf", "httpx"]
+dependencies = [
+    "flatagents[litellm]",
+    "pypdf",
+    "httpx",
+    "opentelemetry-api",
+    "opentelemetry-sdk",
+    "opentelemetry-exporter-otlp",
+]
 requires-python = ">=3.10"
 
 [build-system]

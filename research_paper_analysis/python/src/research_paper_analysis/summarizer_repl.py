@@ -384,7 +384,75 @@ async def _summarize_actions(
     conn: sqlite3.Connection,
     candidates_by_index: Dict[int, Candidate],
     actions: List[Dict[str, Any]],
+    max_workers: int = 3,
 ) -> None:
+    """Push papers to work queue and spawn distributed workers.
+    
+    Instead of processing papers serially inline, this:
+    1. Pushes selected papers to paper_queue with 'pending' status
+    2. Runs the parallelization checker to spawn worker processes
+    3. Workers process papers in parallel
+    """
+    from flatagents import FlatMachine
+    
+    to_summarize = [a for a in actions if a["action"] == "summarize"]
+    if not to_summarize:
+        print("No papers to summarize.")
+        return
+    
+    to_summarize.sort(key=lambda item: item.get("priority", 0))
+
+    # Step 1: Push all papers to queue as 'pending'
+    print(f"\n📋 Queuing {len(to_summarize)} paper(s) for processing...")
+    for action in to_summarize:
+        candidate = candidates_by_index[action["index"]]
+        priority = int(action.get("priority") or 0)
+        _ensure_queue_row(conn, candidate.paper_id, priority)
+        
+        # Reset to pending (not processing) - workers will claim them
+        conn.execute(
+            """
+            UPDATE paper_queue
+            SET status = 'pending', worker = NULL, started_at = NULL, priority = ?
+            WHERE paper_id = ?
+            """,
+            (priority, candidate.paper_id),
+        )
+    conn.commit()
+    print(f"   ✅ Queued {len(to_summarize)} papers.")
+    
+    # Step 2: Run parallelization checker to spawn workers
+    config_dir = _repo_root() / "research_paper_analysis" / "config"
+    checker_config = config_dir / "parallelization_checker.yml"
+    
+    if not checker_config.exists():
+        print(f"   ⚠️  Parallelization checker not found at {checker_config}")
+        print("   Falling back to serial processing...")
+        # Fallback to inline processing if checker doesn't exist
+        await _summarize_inline(conn, candidates_by_index, actions)
+        return
+    
+    print(f"\n🚀 Spawning up to {max_workers} worker(s)...")
+    machine = FlatMachine(config_file=str(checker_config))
+    result = await machine.execute(input={
+        "max_workers": max_workers,
+    })
+    
+    spawned = result.get("spawned_count", result.get("spawned", 0))
+    queue_depth = result.get("queue_depth", len(to_summarize))
+    active_workers = result.get("active_workers", 0)
+    
+    print(f"   ✅ Spawned {spawned} worker(s).")
+    print(f"   📊 Queue depth: {queue_depth}, Active workers: {active_workers + spawned}")
+    print(f"\n💡 Workers are processing in parallel. Run 'run_checker.py' again to spawn more if needed.")
+
+
+async def _summarize_inline(
+    conn: sqlite3.Connection,
+    candidates_by_index: Dict[int, Candidate],
+    actions: List[Dict[str, Any]],
+) -> None:
+    """Fallback: process papers serially inline (original behavior)."""
     to_summarize = [a for a in actions if a["action"] == "summarize"]
     to_summarize.sort(key=lambda item: item.get("priority", 0))
 
@@ -433,7 +501,7 @@ async def _summarize_actions(
             logger.exception("Summarization failed for %s", candidate.arxiv_id)
 
 
-async def run_repl(db_path: Path, limit: int) -> None:
+async def run_repl(db_path: Path, limit: int, max_workers: int = 3) -> None:
     if not db_path.exists():
         raise FileNotFoundError(f"Database not found: {db_path}")
 
@@ -529,7 +597,7 @@ async def run_repl(db_path: Path, limit: int) -> None:
 
     candidates_by_index = {c.index: c for c in candidates}
     _apply_disable_summary(conn, candidates_by_index, normalized_actions)
-    await _summarize_actions(conn, candidates_by_index, normalized_actions)
+    await _summarize_actions(conn, candidates_by_index, normalized_actions, max_workers=max_workers)
     conn.close()
 
 
@@ -547,10 +615,16 @@ def main() -> None:
         default=10,
         help="Number of candidate papers per batch (default: 10)",
     )
+    parser.add_argument(
+        "--max-workers", "-w",
+        type=int,
+        default=3,
+        help="Maximum parallel workers to spawn (default: 3)",
+    )
     args = parser.parse_args()
 
     db_path = Path(args.db_path) if args.db_path else _default_db_path()
-    asyncio.run(run_repl(db_path, args.limit))
+    asyncio.run(run_repl(db_path, args.limit, args.max_workers))
 
 
 if __name__ == "__main__":

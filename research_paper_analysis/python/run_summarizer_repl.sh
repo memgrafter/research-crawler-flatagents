@@ -52,8 +52,11 @@ find_project_root() {
 }
 
 PROJECT_ROOT="$(find_project_root "$SCRIPT_DIR")"
+# This only works if your flatagents local is adjacent to this project
+PYTHON_SDK_PATH="$PROJECT_ROOT/../flatagents/sdk/python"
 
-PYTHON_SDK_PATH="$PROJECT_ROOT/flatagents"
+echo "📁 Project root: $PROJECT_ROOT"
+echo "📁 Python SDK: $PYTHON_SDK_PATH"
 
 # Create venv if missing
 if [ ! -d "$VENV_PATH" ]; then
