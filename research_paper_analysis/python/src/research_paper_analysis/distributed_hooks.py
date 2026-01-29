@@ -94,6 +94,7 @@ class DistributedPaperAnalysisHooks(JsonValidationHooks):
             "deregister_worker": self._deregister_worker,
             "list_stale_workers": self._list_stale_workers,
             "reap_worker": self._reap_worker,
+            "reap_workers": self._reap_workers,
         }
         
         # Delegate to custom handler if exists
@@ -488,6 +489,7 @@ class DistributedPaperAnalysisHooks(JsonValidationHooks):
             ]
         
         context["workers"] = workers
+        context["stale_workers"] = workers
         context["stale_count"] = len(workers)
         return context
     
@@ -523,4 +525,24 @@ class DistributedPaperAnalysisHooks(JsonValidationHooks):
         
         context["reaped_worker_id"] = worker_id
         context["papers_released"] = released
+        return context
+
+    async def _reap_workers(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Reap all stale workers listed in context."""
+        workers = context.get("stale_workers") or []
+        reaped_ids: List[str] = []
+        released_total = 0
+
+        for worker in workers:
+            if not worker:
+                continue
+            result = await self._reap_worker({"worker": worker})
+            worker_id = result.get("reaped_worker_id")
+            if worker_id:
+                reaped_ids.append(worker_id)
+            released_total += int(result.get("papers_released") or 0)
+
+        context["reaped_workers"] = reaped_ids
+        context["reaped_count"] = len(reaped_ids)
+        context["released_total"] = released_total
         return context

@@ -529,9 +529,32 @@ async def _summarize_actions(
     conn: sqlite3.Connection,
     candidates_by_index: Dict[int, Candidate],
     actions: List[Dict[str, Any]],
+    queue_only: bool = False,
 ) -> None:
     to_summarize = [a for a in actions if a["action"] == "summarize"]
     to_summarize.sort(key=lambda item: item.get("priority", 0))
+
+    if queue_only:
+        if not to_summarize:
+            print("No papers to summarize.")
+            return
+        print(f"\n📋 Queuing {len(to_summarize)} paper(s) for processing...")
+        for action in to_summarize:
+            candidate = candidates_by_index[action["index"]]
+            priority = int(action.get("priority") or 0)
+            _ensure_queue_row(conn, candidate.paper_id, priority)
+            conn.execute(
+                """
+                UPDATE paper_queue
+                SET status = 'pending', worker = NULL, started_at = NULL, priority = ?
+                WHERE paper_id = ?
+                """,
+                (priority, candidate.paper_id),
+            )
+        conn.commit()
+        print(f"   ✅ Queued {len(to_summarize)} papers.")
+        print("\n⏭️  Queue-only mode: skipping worker spawn.")
+        return
 
     for action in to_summarize:
         candidate = candidates_by_index[action["index"]]
@@ -584,6 +607,7 @@ async def run_repl(
     query: Optional[str],
     rebuild_fts: bool,
     only_llm_relevant: bool,
+    queue_only: bool = False,
 ) -> None:
     if not db_path.exists():
         raise FileNotFoundError(f"Database not found: {db_path}")
@@ -707,7 +731,7 @@ async def run_repl(
 
     candidates_by_index = {c.index: c for c in candidates}
     _apply_disable_summary(conn, candidates_by_index, normalized_actions)
-    await _summarize_actions(conn, candidates_by_index, normalized_actions)
+    await _summarize_actions(conn, candidates_by_index, normalized_actions, queue_only=queue_only)
     conn.close()
 
 
@@ -740,11 +764,23 @@ def main() -> None:
         action="store_true",
         help="Restrict results to papers where llm_relevant = 1",
     )
+    parser.add_argument(
+        "--queue-only",
+        action="store_true",
+        help="Queue selected papers without running summarization",
+    )
     args = parser.parse_args()
 
     db_path = Path(args.db_path) if args.db_path else _default_db_path()
     asyncio.run(
-        run_repl(db_path, args.limit, args.query, args.rebuild_fts, args.llm_relevant_only)
+        run_repl(
+            db_path,
+            args.limit,
+            args.query,
+            args.rebuild_fts,
+            args.llm_relevant_only,
+            args.queue_only,
+        )
     )
 
 

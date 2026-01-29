@@ -12,6 +12,7 @@ JSON_LOG=false
 MAX_WORKERS=3
 LIMIT=""
 DB_PATH_OVERRIDE=""
+QUEUE_ONLY=false
 PASSTHROUGH_ARGS=()
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -36,6 +37,11 @@ while [[ $# -gt 0 ]]; do
             DB_PATH_OVERRIDE="$2"
             PASSTHROUGH_ARGS+=("$1" "$2")
             shift 2
+            ;;
+        --queue-only|-q)
+            QUEUE_ONLY=true
+            PASSTHROUGH_ARGS+=("--queue-only")
+            shift
             ;;
         -w|--workers)
             MAX_WORKERS="$2"
@@ -96,6 +102,18 @@ count_summarizer_pending() {
     sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM paper_queue WHERE status IN ('pending','processing') AND priority > 0" 2>/dev/null || true
 }
 
+count_active_workers() {
+    if ! command -v sqlite3 >/dev/null 2>&1; then
+        echo ""
+        return 0
+    fi
+    if [ ! -f "$DB_PATH" ]; then
+        echo ""
+        return 0
+    fi
+    sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM worker_registry WHERE status = 'active'" 2>/dev/null || true
+}
+
 BASE_PENDING="$(count_summarizer_pending)"
 
 # Create venv if missing
@@ -153,7 +171,7 @@ else
 fi
 
 if [ "$SHOW_HELP" = true ]; then
-    echo "Wrapper options: --local/-l (use local flatagents), --upgrade/-u (reinstall/upgrade deps), --json-log/-j (JSON log format), -w/--workers (max workers)."
+    echo "Wrapper options: --local/-l (use local flatagents), --upgrade/-u (reinstall/upgrade deps), --json-log/-j (JSON log format), -w/--workers (max workers), --queue-only/-q (queue without workers)."
 fi
 
 # Run
@@ -173,35 +191,57 @@ else
     echo "📝 Logs: $LOG_DIR"
 fi
 
-# Start the scaling daemon in background
-echo "🔄 Starting scale daemon (background, max_workers=$MAX_WORKERS)..."
-"$VENV_PATH/bin/python" "$SCRIPT_DIR/run_checker.py" --daemon -m "$MAX_WORKERS" > "$LOG_DIR/scale_daemon.log" 2>&1 &
-DAEMON_PID=$!
-DAEMON_STOPPED=false
-echo "   Daemon PID: $DAEMON_PID (will continue after REPL exits)"
-echo "   To stop: kill $DAEMON_PID"
+if [ "$QUEUE_ONLY" = true ]; then
+    echo "🧾 Queue-only mode: skipping scale daemon."
+    DAEMON_PID=""
+    DAEMON_STOPPED=true
+else
+    # Start the scaling daemon in background
+    echo "🔄 Starting scale daemon (background, max_workers=$MAX_WORKERS)..."
+    "$VENV_PATH/bin/python" "$SCRIPT_DIR/run_checker.py" --daemon -m "$MAX_WORKERS" > "$LOG_DIR/scale_daemon.log" 2>&1 &
+    DAEMON_PID=$!
+    DAEMON_STOPPED=false
+    echo "   Daemon PID: $DAEMON_PID (will continue after REPL exits)"
+    echo "   To stop: kill $DAEMON_PID"
+fi
 
 "$VENV_PATH/bin/python" -m research_paper_analysis.search_repl "${PASSTHROUGH_ARGS[@]}"
 echo "---"
 
+if [ "$QUEUE_ONLY" = true ]; then
+    echo "✅ Search REPL complete! (queue-only)"
+    echo "   Scale daemon not started."
+    exit 0
+fi
+
 if [[ "$BASE_PENDING" =~ ^[0-9]+$ ]]; then
     AFTER_PENDING="$(count_summarizer_pending)"
     if [[ "$AFTER_PENDING" =~ ^[0-9]+$ ]]; then
-        if (( AFTER_PENDING <= BASE_PENDING )); then
-            echo "🛑 No new prioritized jobs queued; stopping scale daemon."
+        if (( AFTER_PENDING == 0 )); then
+            echo "🛑 No prioritized jobs queued; stopping scale daemon."
             kill "$DAEMON_PID" 2>/dev/null || true
             DAEMON_STOPPED=true
         else
-            NEW_TASKS=$((AFTER_PENDING - BASE_PENDING))
             if [ -n "$LIMIT" ]; then
-                echo "⏳ Waiting for $NEW_TASKS of $LIMIT selected prioritized job(s) to finish..."
+                echo "⏳ Waiting for $AFTER_PENDING of $LIMIT prioritized job(s) to finish..."
             else
-                echo "⏳ Waiting for $NEW_TASKS selected prioritized job(s) to finish..."
+                echo "⏳ Waiting for $AFTER_PENDING prioritized job(s) to finish..."
             fi
+            SEEN_ACTIVE=false
             while true; do
                 CURRENT="$(count_summarizer_pending)"
-                if [[ "$CURRENT" =~ ^[0-9]+$ ]] && (( CURRENT <= BASE_PENDING )); then
-                    echo "✅ Selected prioritized jobs finished; stopping scale daemon."
+                ACTIVE_WORKERS="$(count_active_workers)"
+                if [[ "$ACTIVE_WORKERS" =~ ^[0-9]+$ ]] && (( ACTIVE_WORKERS > 0 )); then
+                    SEEN_ACTIVE=true
+                fi
+                if [[ "$CURRENT" =~ ^[0-9]+$ ]] && (( CURRENT == 0 )); then
+                    echo "✅ Prioritized jobs finished; stopping scale daemon."
+                    kill "$DAEMON_PID" 2>/dev/null || true
+                    DAEMON_STOPPED=true
+                    break
+                fi
+                if [ "$SEEN_ACTIVE" = true ] && [[ "$ACTIVE_WORKERS" =~ ^[0-9]+$ ]] && (( ACTIVE_WORKERS == 0 )); then
+                    echo "⚠️ No active workers remain; stopping scale daemon."
                     kill "$DAEMON_PID" 2>/dev/null || true
                     DAEMON_STOPPED=true
                     break

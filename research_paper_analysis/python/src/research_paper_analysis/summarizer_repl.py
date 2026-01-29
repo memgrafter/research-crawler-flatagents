@@ -385,12 +385,13 @@ async def _summarize_actions(
     candidates_by_index: Dict[int, Candidate],
     actions: List[Dict[str, Any]],
     max_workers: int = 3,
+    queue_only: bool = False,
 ) -> None:
-    """Push papers to work queue and spawn distributed workers.
+    """Push papers to work queue and optionally spawn distributed workers.
     
     Instead of processing papers serially inline, this:
     1. Pushes selected papers to paper_queue with 'pending' status
-    2. Runs the parallelization checker to spawn worker processes
+    2. Optionally runs the parallelization checker to spawn worker processes
     3. Workers process papers in parallel
     """
     from flatagents import FlatMachine
@@ -420,6 +421,10 @@ async def _summarize_actions(
         )
     conn.commit()
     print(f"   ✅ Queued {len(to_summarize)} papers.")
+
+    if queue_only:
+        print("\n⏭️  Queue-only mode: skipping worker spawn.")
+        return
     
     # Step 2: Run parallelization checker to spawn workers
     config_dir = _repo_root() / "research_paper_analysis" / "config"
@@ -501,7 +506,12 @@ async def _summarize_inline(
             logger.exception("Summarization failed for %s", candidate.arxiv_id)
 
 
-async def run_repl(db_path: Path, limit: int, max_workers: int = 3) -> None:
+async def run_repl(
+    db_path: Path,
+    limit: int,
+    max_workers: int = 3,
+    queue_only: bool = False,
+) -> None:
     if not db_path.exists():
         raise FileNotFoundError(f"Database not found: {db_path}")
 
@@ -597,7 +607,13 @@ async def run_repl(db_path: Path, limit: int, max_workers: int = 3) -> None:
 
     candidates_by_index = {c.index: c for c in candidates}
     _apply_disable_summary(conn, candidates_by_index, normalized_actions)
-    await _summarize_actions(conn, candidates_by_index, normalized_actions, max_workers=max_workers)
+    await _summarize_actions(
+        conn,
+        candidates_by_index,
+        normalized_actions,
+        max_workers=max_workers,
+        queue_only=queue_only,
+    )
     conn.close()
 
 
@@ -621,10 +637,15 @@ def main() -> None:
         default=3,
         help="Maximum parallel workers to spawn (default: 3)",
     )
+    parser.add_argument(
+        "--queue-only",
+        action="store_true",
+        help="Queue selected papers without spawning workers",
+    )
     args = parser.parse_args()
 
     db_path = Path(args.db_path) if args.db_path else _default_db_path()
-    asyncio.run(run_repl(db_path, args.limit, args.max_workers))
+    asyncio.run(run_repl(db_path, args.limit, args.max_workers, args.queue_only))
 
 
 if __name__ == "__main__":
