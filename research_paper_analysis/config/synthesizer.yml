@@ -1,7 +1,7 @@
 # Synthesizer Agent
 # Creates or improves executive summary based on analysis and critique
 spec: flatagent
-spec_version: "0.8.0"
+spec_version: "0.9.0"
 
 data:
   name: synthesizer
