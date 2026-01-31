@@ -1,5 +1,5 @@
 spec: flatprofiles
-spec_version: "0.8.0"
+spec_version: "0.9.0"
 
 data:
   model_profiles:
