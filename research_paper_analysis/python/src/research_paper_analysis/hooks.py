@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -108,6 +109,17 @@ class JsonValidationHooks(LoggingHooks):
         error: Exception,
         context: Dict[str, Any]
     ) -> Optional[str]:
+        status_code = self._extract_status_code(error)
+        headers = self._extract_headers(error)
+        self._record_llm_error(
+            context,
+            error_text=str(error),
+            error_type=type(error).__name__,
+            status_code=status_code,
+            headers=headers,
+            source=state_name,
+        )
+
         rate_limit = self._detect_rate_limit(error)
         if not rate_limit:
             return None
@@ -151,6 +163,7 @@ class JsonValidationHooks(LoggingHooks):
         output: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
         output = super().on_state_exit(state_name, context, output)
+        self._capture_output_error(state_name, context, output)
 
         if state_name in self._VALIDATION_STATES:
             spec = self._VALIDATION_STATES[state_name]
@@ -182,6 +195,24 @@ class JsonValidationHooks(LoggingHooks):
                 self._clear_fix_flags(context)
 
         return output
+
+    def on_machine_end(self, context: Dict[str, Any], final_output: Dict[str, Any]) -> Dict[str, Any]:
+        final_output = super().on_machine_end(context, final_output)
+        if not isinstance(final_output, dict):
+            return final_output
+
+        llm_fields = (
+            "llm_error",
+            "llm_error_type",
+            "llm_error_status_code",
+            "llm_error_headers",
+            "llm_error_source",
+        )
+        for key in llm_fields:
+            if key in context and key not in final_output:
+                final_output[key] = context[key]
+
+        return final_output
 
     @staticmethod
     def _validate_output(
@@ -232,15 +263,129 @@ class JsonValidationHooks(LoggingHooks):
         context["json_fix_raw"] = None
         context["json_fix_source"] = None
 
-    def _detect_rate_limit(self, error: Exception) -> Optional[tuple[str, Optional[int]]]:
+    @staticmethod
+    def _coerce_status_code(value: Optional[Any]) -> Optional[int]:
+        if value is None:
+            return None
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str) and value.isdigit():
+            return int(value)
+        return None
+
+    @staticmethod
+    def _normalize_headers(raw_headers: Optional[Any]) -> Dict[str, str]:
+        if raw_headers is None:
+            return {}
+
+        if isinstance(raw_headers, dict):
+            items = raw_headers.items()
+        elif hasattr(raw_headers, "items"):
+            items = raw_headers.items()
+        elif isinstance(raw_headers, (list, tuple)):
+            items = raw_headers
+        else:
+            return {}
+
+        normalized: Dict[str, str] = {}
+        for key, value in items:
+            if key is None:
+                continue
+            key_text = str(key).lower()
+            if isinstance(value, (list, tuple)):
+                value_text = ",".join(str(item) for item in value)
+            else:
+                value_text = str(value)
+            normalized[key_text] = value_text
+
+        return normalized
+
+    def _extract_status_code(self, error: Exception) -> Optional[int]:
+        for attr in ("status_code", "status", "http_status", "statusCode"):
+            code = self._coerce_status_code(getattr(error, attr, None))
+            if code is not None:
+                return code
+
         response = getattr(error, "response", None)
-        status_code = getattr(response, "status_code", None) if response else None
-        headers = {}
-        if response is not None and hasattr(response, "headers"):
-            try:
-                headers = {k.lower(): v for k, v in response.headers.items()}
-            except Exception:
-                headers = {}
+        if response is not None:
+            for attr in ("status_code", "status", "http_status", "statusCode"):
+                code = self._coerce_status_code(getattr(response, attr, None))
+                if code is not None:
+                    return code
+            if isinstance(response, dict):
+                for key in ("status_code", "status", "http_status", "statusCode"):
+                    code = self._coerce_status_code(response.get(key))
+                    if code is not None:
+                        return code
+
+        match = re.search(r"\b([4-5]\d{2})\b", str(error))
+        if match:
+            return int(match.group(1))
+        return None
+
+    def _extract_headers(self, error: Exception) -> Dict[str, str]:
+        response = getattr(error, "response", None)
+        headers: Dict[str, str] = {}
+
+        if response is not None:
+            headers.update(self._normalize_headers(getattr(response, "headers", None)))
+            if not headers and isinstance(response, dict):
+                headers.update(self._normalize_headers(response.get("headers")))
+
+        headers.update(self._normalize_headers(getattr(error, "headers", None)))
+        return headers
+
+    def _record_llm_error(
+        self,
+        context: Dict[str, Any],
+        error_text: Optional[str],
+        error_type: Optional[str] = None,
+        status_code: Optional[int] = None,
+        headers: Optional[Dict[str, str]] = None,
+        source: Optional[str] = None,
+    ) -> None:
+        if error_text:
+            context["llm_error"] = error_text
+        if error_type:
+            context["llm_error_type"] = error_type
+        if status_code is not None:
+            context["llm_error_status_code"] = status_code
+        if headers:
+            context["llm_error_headers"] = headers
+        if source:
+            context["llm_error_source"] = source
+
+    def _capture_output_error(
+        self,
+        state_name: str,
+        context: Dict[str, Any],
+        output: Optional[Dict[str, Any]],
+    ) -> None:
+        if not output or not isinstance(output, dict):
+            return
+        if (
+            "_error" not in output
+            and "_error_status_code" not in output
+            and "_error_headers" not in output
+        ):
+            return
+
+        error_text = output.get("_error")
+        error_type = output.get("_error_type")
+        status_code = self._coerce_status_code(output.get("_error_status_code"))
+        headers = self._normalize_headers(output.get("_error_headers"))
+        self._record_llm_error(
+            context,
+            error_text=str(error_text) if error_text is not None else None,
+            error_type=str(error_type) if error_type is not None else None,
+            status_code=status_code,
+            headers=headers,
+            source=state_name,
+        )
+
+    def _detect_rate_limit(self, error: Exception) -> Optional[tuple[str, Optional[int]]]:
+        status_code = self._extract_status_code(error)
+        headers = self._extract_headers(error)
 
         retry_after = self._parse_retry_after(headers.get("retry-after"))
 

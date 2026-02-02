@@ -13,6 +13,7 @@ import os
 import re
 import socket
 import asyncio
+import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -400,11 +401,102 @@ class DistributedPaperAnalysisHooks(JsonValidationHooks):
             conn.commit()
             
             return context
+
+    @staticmethod
+    def _collect_error_details(context: Dict[str, Any]) -> str:
+        parts: List[str] = []
+
+        def add_part(value: Optional[str]) -> None:
+            if value and value not in parts:
+                parts.append(value)
+
+        raw_error = context.get("error")
+        if raw_error:
+            add_part(str(raw_error))
+
+        analysis_result = context.get("analysis_result") or {}
+        if not isinstance(analysis_result, dict):
+            analysis_result = {}
+
+        for key in ("error", "json_error"):
+            value = analysis_result.get(key)
+            if value:
+                add_part(str(value))
+
+        llm_error = analysis_result.get("llm_error") or context.get("llm_error")
+        if llm_error:
+            add_part(str(llm_error))
+
+        llm_error_type = analysis_result.get("llm_error_type") or context.get("llm_error_type")
+        if llm_error_type:
+            add_part(f"llm_error_type={llm_error_type}")
+
+        status_code = analysis_result.get("llm_error_status_code")
+        if status_code is None:
+            status_code = context.get("llm_error_status_code")
+        if status_code is not None:
+            add_part(f"status_code={status_code}")
+
+        llm_headers = analysis_result.get("llm_error_headers") or context.get("llm_error_headers")
+        if llm_headers:
+            try:
+                header_text = json.dumps(llm_headers, sort_keys=True)
+            except TypeError:
+                header_text = str(llm_headers)
+            add_part(f"llm_error_headers={header_text}")
+
+        return " | ".join(parts)
+
+    @staticmethod
+    def _is_retryable_failure(error_text: str, context: Dict[str, Any]) -> bool:
+        if context.get("rate_limit_cause"):
+            return True
+
+        status_code = context.get("llm_error_status_code")
+        if status_code is None:
+            analysis_result = context.get("analysis_result") or {}
+            if isinstance(analysis_result, dict):
+                status_code = analysis_result.get("llm_error_status_code")
+        if isinstance(status_code, int):
+            if status_code >= 500 or status_code in {401, 403, 408, 429}:
+                return True
+
+        if not error_text:
+            return False
+
+        lowered = error_text.lower()
+        status_codes = {
+            int(code) for code in re.findall(r"\b([4-5]\d{2})\b", lowered)
+        }
+        if any(code >= 500 for code in status_codes):
+            return True
+        if status_codes.intersection({401, 403, 408, 429}):
+            return True
+
+        retryable_phrases = (
+            "rate limit",
+            "too many requests",
+            "overloaded",
+            "service unavailable",
+            "gateway timeout",
+            "bad gateway",
+            "internal server error",
+            "timeout",
+            "unauthorized",
+            "forbidden",
+            "invalid api key",
+            "authentication",
+        )
+        return any(phrase in lowered for phrase in retryable_phrases)
     
     async def _fail_paper(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Mark paper as failed. Will retry or poison based on attempts."""
         queue_id = context.get("queue_id")
         error = context.get("error")
+        error_details = self._collect_error_details(context)
+        if not error_details and error:
+            error_details = str(error)
+        retryable_failure = self._is_retryable_failure(error_details, context)
         
         if not queue_id:
             raise ValueError("queue_id is required for fail_paper")
@@ -424,7 +516,7 @@ class DistributedPaperAnalysisHooks(JsonValidationHooks):
                 attempts = (row[0] or 0) + 1
                 max_retries = row[1] or 3
                 
-                if attempts >= max_retries:
+                if attempts >= max_retries and not retryable_failure:
                     # Poison the job
                     cursor.execute("""
                         UPDATE paper_queue
@@ -434,7 +526,7 @@ class DistributedPaperAnalysisHooks(JsonValidationHooks):
                             attempts = ?,
                             claimed_by = NULL
                         WHERE id = ?
-                    """, (now, error, attempts, queue_id))
+                    """, (now, error_details, attempts, queue_id))
                 else:
                     # Return to pending for retry
                     cursor.execute("""
@@ -445,7 +537,7 @@ class DistributedPaperAnalysisHooks(JsonValidationHooks):
                             claimed_by = NULL,
                             claimed_at = NULL
                         WHERE id = ?
-                    """, (error, attempts, queue_id))
+                    """, (error_details, attempts, queue_id))
                 
                 conn.commit()
             
