@@ -98,16 +98,16 @@ if [ "$UPGRADE" = true ] || needs_install flatagents research_paper_analysis; th
     if [ "$LOCAL_INSTALL" = true ]; then
         echo "  - Installing flatagents from local source..."
         if [ "$UPGRADE" = true ]; then
-            uv pip install --python "$VENV_PATH/bin/python" -U -e "$PYTHON_SDK_PATH[litellm]"
+            uv pip install --python "$VENV_PATH/bin/python" -U -e "$PYTHON_SDK_PATH[litellm,metrics]"
         else
-            uv pip install --python "$VENV_PATH/bin/python" -e "$PYTHON_SDK_PATH[litellm]"
+            uv pip install --python "$VENV_PATH/bin/python" -e "$PYTHON_SDK_PATH[litellm,metrics]"
         fi
     else
         echo "  - Installing flatagents from PyPI..."
         if [ "$UPGRADE" = true ]; then
-            uv pip install --python "$VENV_PATH/bin/python" -U "flatagents[litellm]"
+            uv pip install --python "$VENV_PATH/bin/python" -U "flatagents[litellm,metrics]"
         else
-            uv pip install --python "$VENV_PATH/bin/python" "flatagents[litellm]"
+            uv pip install --python "$VENV_PATH/bin/python" "flatagents[litellm,metrics]"
         fi
     fi
 
