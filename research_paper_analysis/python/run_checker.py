@@ -12,9 +12,12 @@ Usage:
 
 import argparse
 import asyncio
+import json
+import re
 import sqlite3
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Add src to path
@@ -25,6 +28,127 @@ from flatagents import FlatMachine
 
 CONFIG_DIR = Path(__file__).parent.parent / "config"
 DB_PATH = Path(__file__).parent.parent.parent / "arxiv_crawler" / "data" / "arxiv.sqlite"
+
+
+def _parse_retry_after(value: str | None) -> int | None:
+    if not value:
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _extract_header_json(error_text: str) -> dict:
+    marker = "llm_error_headers="
+    if marker not in error_text:
+        return {}
+
+    start = error_text.find(marker) + len(marker)
+    header_text = error_text[start:]
+    if " | " in header_text:
+        header_text = header_text.split(" | ", 1)[0]
+    header_text = header_text.strip()
+    if not header_text:
+        return {}
+
+    try:
+        parsed = json.loads(header_text)
+    except json.JSONDecodeError:
+        return {}
+
+    if isinstance(parsed, dict):
+        return {str(k).lower(): str(v) for k, v in parsed.items()}
+    return {}
+
+
+def _parse_status_code(error_text: str) -> int | None:
+    match = re.search(r"status_code=(\d{3})", error_text)
+    if match:
+        return int(match.group(1))
+    match = re.search(r"\b([4-5]\d{2})\b", error_text)
+    if match:
+        return int(match.group(1))
+    return None
+
+
+def _parse_timestamp(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _delay_from_headers(headers: dict) -> int | None:
+    retry_after = _parse_retry_after(headers.get("retry-after"))
+    if retry_after:
+        return retry_after
+
+    reset_keys = (
+        "x-ratelimit-reset-requests-minute",
+        "x-ratelimit-reset-tokens-minute",
+        "x-ratelimit-reset-requests-hour",
+        "x-ratelimit-reset-tokens-hour",
+        "x-ratelimit-reset-requests-day",
+        "x-ratelimit-reset-tokens-day",
+    )
+    for key in reset_keys:
+        value = _parse_retry_after(headers.get(key))
+        if value:
+            return value
+
+    if headers.get("x-ratelimit-remaining-requests-minute") == "0" or headers.get(
+        "x-ratelimit-remaining-tokens-minute"
+    ) == "0":
+        return 60
+    if headers.get("x-ratelimit-remaining-requests-hour") == "0" or headers.get(
+        "x-ratelimit-remaining-tokens-hour"
+    ) == "0":
+        return 3600
+    if headers.get("x-ratelimit-remaining-requests-day") == "0" or headers.get(
+        "x-ratelimit-remaining-tokens-day"
+    ) == "0":
+        return 86400
+
+    return None
+
+
+def _rate_limit_delay(conn: sqlite3.Connection) -> int | None:
+    cursor = conn.execute(
+        """
+        SELECT error, COALESCE(finished_at, started_at, enqueued_at)
+        FROM paper_queue
+        WHERE error IS NOT NULL AND error != ''
+        ORDER BY COALESCE(finished_at, started_at, enqueued_at) DESC
+        LIMIT 50
+        """
+    )
+    rows = cursor.fetchall()
+    now = datetime.now(timezone.utc)
+    window = timedelta(minutes=10)
+
+    for error_text, timestamp in rows:
+        if not error_text:
+            continue
+        parsed_time = _parse_timestamp(timestamp)
+        if parsed_time and (now - parsed_time) > window:
+            continue
+
+        status_code = _parse_status_code(error_text)
+        headers = _extract_header_json(error_text)
+        delay = _delay_from_headers(headers) if headers else None
+
+        if delay:
+            return delay
+        if status_code == 429:
+            return 60
+
+    return None
 
 
 async def run_scaling_check(max_workers: int) -> dict:
@@ -64,6 +188,7 @@ async def daemon_mode(
     idle_count = 0
     idle_exit_threshold = 50  # Exit after 50 consecutive idle checks (~5 seconds)
     last_reap = time.monotonic() - reap_interval
+    scale_pause_until = 0.0
 
     # Get current max id to avoid processing old events
     cursor = conn.execute("SELECT MAX(id) FROM scaling_events")
@@ -93,6 +218,15 @@ async def daemon_mode(
                     print(f"Error running reaper: {e}")
                 last_reap = time.monotonic()
 
+            now = time.monotonic()
+            if now >= scale_pause_until:
+                delay = _rate_limit_delay(conn)
+                if delay:
+                    scale_pause_until = now + delay
+                    print(
+                        f"\n⏳ Rate limit headers detected; pausing scaling for {delay:.0f}s."
+                    )
+
             # Check for new events
             cursor = conn.execute(
                 "SELECT MAX(id) FROM scaling_events WHERE id > ?",
@@ -105,16 +239,24 @@ async def daemon_mode(
                 idle_count = 0  # Reset idle counter
                 print(f"\n📡 Scaling event detected (id={last_id}), checking pool...")
 
-                result = await run_scaling_check(max_workers)
+                pause_remaining = scale_pause_until - time.monotonic()
+                if pause_remaining > 0:
+                    print(
+                        f"   ⏸️ Scaling paused for {pause_remaining:.0f}s due to rate limits."
+                    )
+                else:
+                    result = await run_scaling_check(max_workers)
 
-                spawned = result.get("spawned", 0)
-                queue_depth = result.get("queue_depth", 0)
-                active_workers = result.get("active_workers", 0)
+                    spawned = result.get("spawned", 0)
+                    queue_depth = result.get("queue_depth", 0)
+                    active_workers = result.get("active_workers", 0)
 
-                print(f"   Queue: {queue_depth}, Active: {active_workers}, Spawned: {spawned}")
+                    print(
+                        f"   Queue: {queue_depth}, Active: {active_workers}, Spawned: {spawned}"
+                    )
 
                 # Exit if queue empty and no workers active
-                if queue_depth == 0 and active_workers == 0:
+                if pause_remaining <= 0 and queue_depth == 0 and active_workers == 0:
                     print("\n✅ All work complete (queue=0, workers=0). Daemon exiting.")
                     break
             else:
@@ -138,13 +280,19 @@ async def daemon_mode(
 
                     if pending > 0:
                         print("\n⏳ No scaling events; running periodic scale check...")
-                        result = await run_scaling_check(max_workers)
-                        spawned = result.get("spawned", 0)
-                        queue_depth = result.get("queue_depth", pending)
-                        active_workers = result.get("active_workers", active)
-                        print(
-                            f"   Queue: {queue_depth}, Active: {active_workers}, Spawned: {spawned}"
-                        )
+                        pause_remaining = scale_pause_until - time.monotonic()
+                        if pause_remaining > 0:
+                            print(
+                                f"   ⏸️ Scaling paused for {pause_remaining:.0f}s due to rate limits."
+                            )
+                        else:
+                            result = await run_scaling_check(max_workers)
+                            spawned = result.get("spawned", 0)
+                            queue_depth = result.get("queue_depth", pending)
+                            active_workers = result.get("active_workers", active)
+                            print(
+                                f"   Queue: {queue_depth}, Active: {active_workers}, Spawned: {spawned}"
+                            )
 
                     idle_count = 0  # Reset and keep checking
 
