@@ -12,8 +12,18 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 from zoneinfo import ZoneInfo
 
-from flatagents import LoggingHooks, get_logger
+from flatagents import LoggingHooks, get_logger, setup_logging
 
+DEFAULT_LOG_DIR = Path(__file__).parent.parent.parent / "logs"
+
+if "FLATAGENTS_LOG_DIR" not in os.environ:
+    os.environ["FLATAGENTS_LOG_DIR"] = str(DEFAULT_LOG_DIR)
+if "FLATAGENTS_LOG_LEVEL" not in os.environ:
+    os.environ["FLATAGENTS_LOG_LEVEL"] = "INFO"
+if "FLATAGENTS_LOG_FORMAT" not in os.environ:
+    os.environ["FLATAGENTS_LOG_FORMAT"] = "standard"
+
+setup_logging(force=True)
 logger = get_logger(__name__)
 
 DEFAULT_DB_PATH = str(
