@@ -111,9 +111,9 @@ class DistributedPaperAnalysisHooks(JsonValidationHooks):
         }
         if action in sdk_actions:
             return await self._sdk_hooks.on_action(action, context)
-        
+
         # Fall through to default behavior
-        return context
+        return await super().on_action(action, context)
     
     # -------------------------------------------------------------------------
     # Pool State (custom for paper_queue schema)
@@ -136,9 +136,16 @@ class DistributedPaperAnalysisHooks(JsonValidationHooks):
                 "SELECT COUNT(*) FROM worker_registry WHERE status = 'active'"
             )
             active_workers = cursor.fetchone()[0]
+
+            # Count suspended workers
+            cursor.execute(
+                "SELECT COUNT(*) FROM worker_registry WHERE status = 'suspended'"
+            )
+            suspended_workers = cursor.fetchone()[0]
             
             context["queue_depth"] = queue_depth
             context["active_workers"] = active_workers
+            context["suspended_workers"] = suspended_workers
             return context
     
     async def _calculate_spawn(self, context: Dict[str, Any]) -> Dict[str, Any]:
@@ -146,13 +153,17 @@ class DistributedPaperAnalysisHooks(JsonValidationHooks):
         queue_depth = int(context.get("queue_depth", 0))
         active_workers = int(context.get("active_workers", 0))
         max_workers = int(context.get("max_workers", 3))
+        suspended_workers = int(context.get("suspended_workers", 0))
+
+        effective_max = max(max_workers - suspended_workers, 0)
         
-        # Workers needed = min(queue_depth, max_workers)
-        workers_needed = min(queue_depth, max_workers)
+        # Workers needed = min(queue_depth, effective_max)
+        workers_needed = min(queue_depth, effective_max)
         
         # Workers to spawn = max(workers_needed - active_workers, 0)
         workers_to_spawn = max(workers_needed - active_workers, 0)
         
+        context["effective_max_workers"] = effective_max
         context["workers_needed"] = workers_needed
         context["workers_to_spawn"] = workers_to_spawn
         # Provide a real list for foreach iteration (Jinja range() yields string)

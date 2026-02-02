@@ -12,6 +12,8 @@ data:
   
   context:
     worker_id: "{{ input.worker_id }}"
+    rate_limit_agent_states:
+      - analyze_paper
   
   hooks:
     module: research_paper_analysis.distributed_hooks
@@ -60,6 +62,7 @@ data:
     analyze_paper:
       machine: analyzer
       input:
+        worker_id: "{{ context.worker_id }}"
         title: "{{ context.paper.title }}"
         authors: "{{ context.paper.authors }}"
         abstract: "{{ context.paper.abstract }}"
@@ -73,6 +76,15 @@ data:
         - condition: "context.analysis_result.error != None"
           to: paper_failed
         - to: save_result
+
+    rate_limit_gate:
+      action: rate_limit_gate
+      transitions:
+        - to: rate_limit_resume
+
+    rate_limit_resume:
+      transitions:
+        - to: done
     
     save_result:
       # Write result to file and update paper_queue

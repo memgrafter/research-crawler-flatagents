@@ -17,6 +17,14 @@ data:
     authors: "{{ input.authors }}"
     abstract: "{{ input.abstract }}"
     section_text: "{{ input.section_text }}"
+    worker_id: "{{ input.worker_id }}"
+    rate_limit_agent_states:
+      - analyze_abstract
+      - extract_abstract
+      - fix_abstract
+      - analyze_sections
+      - extract_sections
+      - fix_sections
     # JSON validation state
     json_fix_required: false
     json_fix_failed: false
@@ -144,6 +152,15 @@ data:
       transitions:
         - condition: "context.json_fix_failed == true"
           to: json_failure
+        - to: done
+
+    rate_limit_gate:
+      action: rate_limit_gate
+      transitions:
+        - to: rate_limit_resume
+
+    rate_limit_resume:
+      transitions:
         - to: done
 
     done:
