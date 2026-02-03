@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import os
 import re
 import sqlite3
@@ -99,9 +100,108 @@ class JsonValidationHooks(LoggingHooks):
     async def on_action(self, action_name: str, context: Dict[str, Any]) -> Dict[str, Any]:
         if action_name == "rate_limit_gate":
             return await self._rate_limit_gate(context)
+        if action_name == "prepend_frontmatter":
+            return await self._prepend_frontmatter(context)
         if action_name == "noop":
             return context
         return super().on_action(action_name, context)
+
+    @staticmethod
+    def _has_frontmatter(report: str) -> bool:
+        if not isinstance(report, str):
+            return False
+        stripped = report.lstrip()
+        if not stripped.startswith("---\n"):
+            return False
+        return stripped.find("\n---", 4) != -1
+
+    @staticmethod
+    def _get_config_dir() -> Path:
+        return Path(__file__).parent.parent.parent.parent / "config"
+
+    @staticmethod
+    def _normalize_text(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value.strip()
+        if isinstance(value, float) and math.isnan(value):
+            return ""
+        return str(value).strip()
+
+    def _load_model_profiles(self, config_dir: Path) -> Dict[str, Dict[str, str]]:
+        """Load model profiles from config/profiles.yml."""
+        profiles_path = config_dir / "profiles.yml"
+        if not profiles_path.exists():
+            return {}
+        import yaml
+        data = yaml.safe_load(profiles_path.read_text()) or {}
+        return (data.get("data") or {}).get("model_profiles") or {}
+
+    def _find_profiles_used(self, config_dir: Path) -> list[str]:
+        """Find profile names referenced by flatagent configs in config/."""
+        import yaml
+        profiles = set()
+        for path in config_dir.glob("*.yml"):
+            if path.name == "profiles.yml":
+                continue
+            try:
+                data = yaml.safe_load(path.read_text()) or {}
+            except Exception:
+                continue
+            if data.get("spec") != "flatagent":
+                continue
+            model_name = ((data.get("data") or {}).get("model") or "").strip()
+            if model_name:
+                profiles.add(model_name)
+        return sorted(profiles)
+
+    def _build_frontmatter(self, context: Dict[str, Any]) -> str:
+        """Build YAML frontmatter for the report."""
+        import yaml
+
+        config_dir = self._get_config_dir()
+        profiles_used = self._find_profiles_used(config_dir)
+        model_profiles = self._load_model_profiles(config_dir)
+        used_profiles = {
+            name: model_profiles.get(name, {}) for name in profiles_used
+        }
+
+        arxiv_id = self._normalize_text(context.get("arxiv_id"))
+        source_url = self._normalize_text(context.get("source_url"))
+        if not source_url and arxiv_id:
+            source_url = f"https://arxiv.org/abs/{arxiv_id}"
+
+        citation_count = context.get("citation_count")
+        if citation_count is None:
+            citation_count = context.get("reference_count")
+
+        frontmatter = {
+            "title": self._normalize_text(context.get("title")),
+            "arxiv_id": arxiv_id,
+            "source_url": source_url,
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "quality_score": context.get("quality_score"),
+            "citation_count": citation_count,
+            "model_profiles_used": profiles_used,
+            "model_profiles": used_profiles,
+        }
+
+        return f"---\n{yaml.safe_dump(frontmatter, sort_keys=False).strip()}\n---\n\n"
+
+    async def _prepend_frontmatter(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        formatted_report = context.get("formatted_report")
+        if not formatted_report or not isinstance(formatted_report, str):
+            return {"frontmatter": "", "formatted_report": formatted_report}
+
+        if self._has_frontmatter(formatted_report):
+            return {"frontmatter": "", "formatted_report": formatted_report}
+
+        frontmatter = self._build_frontmatter(context)
+        return {
+            "frontmatter": frontmatter,
+            "formatted_report": f"{frontmatter}{formatted_report}",
+        }
 
     async def on_error(
         self,

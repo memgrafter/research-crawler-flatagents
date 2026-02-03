@@ -6,17 +6,26 @@ data:
     default:
       provider: cerebras
       name: zai-glm-4.7
-      temperature: 1.0
+      temperature: 0.9
+      top_p: 0.95
       max_tokens: 150000
     creative:
       provider: cerebras
       name: zai-glm-4.7
-      temperature: 0.6
+      temperature: 0.9
+      top_p: 0.95
       max_tokens: 150000
     fast:
       provider: cerebras
       name: zai-glm-4.7
-      temperature: 1.0
+      temperature: 0.9
+      top_p: 0.95
       max_tokens: 150000
+    kimi:
+      provider: openai
+      name: kimi-k2.5-free
+      temperature: 1.0
+      max_tokens: 32000
+      base_url: https://opencode.ai/zen/v1
 
   default: default

@@ -47,6 +47,7 @@ data:
     quality_score: 0
     # Raw and final formatted output
     raw_report: null
+    frontmatter: null
     formatted_report: null
 
   agents:
@@ -137,7 +138,7 @@ data:
       transitions:
         - condition: "context.json_fix_required == true"
           to: fix_report
-        - to: done
+        - to: prepend_frontmatter
 
     fix_report:
       agent: report_fixer
@@ -154,6 +155,15 @@ data:
       transitions:
         - condition: "context.json_fix_failed == true"
           to: json_failure
+        - to: prepend_frontmatter
+
+    # Step 4: Prepend YAML frontmatter (unified output)
+    prepend_frontmatter:
+      action: prepend_frontmatter
+      output_to_context:
+        frontmatter: "{{ output.frontmatter }}"
+        formatted_report: "{{ output.formatted_report }}"
+      transitions:
         - to: done
 
     rate_limit_gate:

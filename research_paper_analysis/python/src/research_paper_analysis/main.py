@@ -19,7 +19,6 @@ import re
 import asyncio
 from urllib.parse import urlparse, urljoin
 from datetime import datetime
-from typing import Dict
 from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Optional
@@ -320,63 +319,6 @@ def slugify_title(value: str) -> str:
     return cleaned or "paper"
 
 
-def load_model_profiles(config_dir: Path) -> Dict[str, Dict[str, str]]:
-    """Load model profiles from config/profiles.yml."""
-    profiles_path = config_dir / "profiles.yml"
-    if not profiles_path.exists():
-        return {}
-    import yaml
-    data = yaml.safe_load(profiles_path.read_text()) or {}
-    return (data.get("data") or {}).get("model_profiles") or {}
-
-
-def find_profiles_used(config_dir: Path) -> list[str]:
-    """Find profile names referenced by flatagent configs in config/."""
-    import yaml
-    profiles = set()
-    for path in config_dir.glob("*.yml"):
-        if path.name == "profiles.yml":
-            continue
-        try:
-            data = yaml.safe_load(path.read_text()) or {}
-        except Exception:
-            continue
-        if data.get("spec") != "flatagent":
-            continue
-        model_name = ((data.get("data") or {}).get("model") or "").strip()
-        if model_name:
-            profiles.add(model_name)
-    return sorted(profiles)
-
-
-def build_frontmatter(
-    paper: ParsedPaper,
-    source: PaperSource,
-    result: dict,
-    config_dir: Path,
-) -> str:
-    """Build YAML frontmatter for the report."""
-    import yaml
-
-    profiles_used = find_profiles_used(config_dir)
-    model_profiles = load_model_profiles(config_dir)
-    used_profiles = {
-        name: model_profiles.get(name, {}) for name in profiles_used
-    }
-
-    frontmatter = {
-        "title": paper.title,
-        "arxiv_id": source.arxiv_id or "",
-        "source_url": source.source_url or "",
-        "generated_at": datetime.now().isoformat(timespec="seconds"),
-        "quality_score": result.get("quality_score"),
-        "citation_count": result.get("citation_count"),
-        "model_profiles_used": profiles_used,
-        "model_profiles": used_profiles,
-    }
-
-    return f"---\n{yaml.safe_dump(frontmatter, sort_keys=False).strip()}\n---\n\n"
-
 
 async def run(resume_id: str = None, arxiv_input: Optional[str] = None):
     """
@@ -470,8 +412,6 @@ async def run(resume_id: str = None, arxiv_input: Optional[str] = None):
     formatted_report = result.get('formatted_report', '')
     report_path = ""
     if formatted_report:
-        frontmatter = build_frontmatter(paper, source, result, config_dir)
-        formatted_report = f"{frontmatter}{formatted_report}"
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         title_slug = slugify_title(paper.title)
         arxiv_prefix = (source.arxiv_id or "unknown").replace("/", "_")
