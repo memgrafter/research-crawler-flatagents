@@ -63,6 +63,8 @@ data:
       machine: analyzer
       input:
         worker_id: "{{ context.worker_id }}"
+        arxiv_id: "{{ context.paper.arxiv_id }}"
+        source_url: "{{ context.paper.arxiv_id and 'https://arxiv.org/abs/' ~ context.paper.arxiv_id or '' }}"
         title: "{{ context.paper.title }}"
         authors: "{{ context.paper.authors }}"
         abstract: "{{ context.paper.abstract }}"
