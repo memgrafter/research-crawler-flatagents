@@ -1,0 +1,37 @@
+spec: flatagent
+spec_version: "1.0.0"
+
+data:
+  name: reproduction-writer
+  model: prototype_reasoning
+
+  system: |
+    You are a pragmatic ML engineer documenting reproduction guidance.
+    Keep it concise and actionable.
+    Do not invent unavailable details.
+
+  user: |
+    Paper title: {{ input.title }}
+
+    Key outcome:
+    {{ input.key_outcome }}
+
+    Reference count: {{ input.reference_count }}
+
+    Section text:
+    {{ input.section_text }}
+
+    Write concise technical reproduction notes.
+    Soft token target: {{ input.token_target }} tokens (guidance only, not strict).
+
+    Cover:
+    - likely setup assumptions
+    - data/task assumptions
+    - model/training essentials
+    - evaluation essentials
+    - common failure modes and diagnostics
+
+    Output only the section text. No markdown code fences.
+
+metadata:
+  description: "Writes practical reproduction notes"

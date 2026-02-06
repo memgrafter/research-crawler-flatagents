@@ -1,0 +1,39 @@
+# Starter terminology canonicalization map for clustering/search consistency
+# Expand over time as you review produced reports.
+
+transformers:
+  - transformer
+  - transformers
+  - attention model
+
+self-attention:
+  - self attention
+  - self-attention
+  - attention mechanism
+
+retrieval-augmented-generation:
+  - rag
+  - retrieval augmented generation
+  - retrieval-augmented generation
+
+instruction-tuning:
+  - instruction tuning
+  - instruction-tuned
+
+parameter-efficient-finetuning:
+  - peft
+  - parameter efficient fine tuning
+  - parameter-efficient fine-tuning
+
+mixture-of-experts:
+  - moe
+  - mixture of experts
+
+chain-of-thought:
+  - cot
+  - chain of thought
+
+tool-use:
+  - tool use
+  - function calling
+  - tool calling

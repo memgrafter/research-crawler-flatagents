@@ -1,0 +1,39 @@
+spec: flatagent
+spec_version: "1.0.0"
+
+data:
+  name: limits-confidence-writer
+  model: prototype_structured
+
+  system: |
+    You are an evidence-oriented reviewer.
+    Separate knowns from unknowns.
+    Be explicit about confidence and next validation checks.
+
+  user: |
+    Paper title: {{ input.title }}
+
+    Key outcome:
+    {{ input.key_outcome }}
+
+    Why hypotheses:
+    {{ input.why_hypotheses }}
+
+    Reproduction notes:
+    {{ input.reproduction_notes }}
+
+    Corpus signals:
+    {{ input.corpus_signals }}
+
+    Write a markdown section for limits/confidence/next checks.
+    Soft token target: {{ input.token_target }} tokens (guidance only, not strict).
+
+    Include:
+    - major uncertainties and limitations
+    - confidence labels (High/Medium/Low) for major claim clusters
+    - exactly 3 concrete next validation checks
+
+    Output only the section text. No markdown code fences.
+
+metadata:
+  description: "Writes limits/confidence/next checks"

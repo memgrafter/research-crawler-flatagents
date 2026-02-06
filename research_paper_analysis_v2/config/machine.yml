@@ -1,0 +1,230 @@
+spec: flatmachine
+spec_version: "1.0.0"
+
+data:
+  name: research-pipeline-v2
+  profiles: ./profiles.yml
+
+  hooks:
+    module: research_paper_analysis_v2.hooks
+    class: V2Hooks
+
+  settings:
+    max_steps: 30
+
+  context:
+    # Source metadata
+    arxiv_id: input.arxiv_id
+    source_url: input.source_url
+    title: input.title
+    authors: input.authors
+    abstract: input.abstract
+    section_text: input.section_text
+    reference_count: input.reference_count
+
+    # Cost-control guidance (soft only)
+    token_target_key_outcome: "120-180"
+    token_target_why: "350-550"
+    token_target_reproduction: "220-380"
+    token_target_limits: "120-220"
+
+    # Corpus/tag context (hook actions)
+    corpus_signals: null
+    corpus_neighbors: null
+    neighbors_considered: 0
+    neighbors_used: 0
+    terminology_tags: []
+    domain_tags: []
+    terminology_tag_meta: {}
+
+    # Generated section content
+    key_outcome: null
+    why_hypotheses: null
+    reproduction_notes: null
+    limits_confidence: null
+
+    # Report assembly
+    report_body: null
+    frontmatter: null
+    formatted_report: null
+
+    # Judge + repair control
+    judge_decision_raw: null
+    judge_decision: "REPAIR"
+    repair_attempted: false
+
+  agents:
+    key_outcome_writer: ./key_outcome_writer.yml
+    why_hypothesis_writer: ./why_hypothesis_writer.yml
+    reproduction_writer: ./reproduction_writer.yml
+    limits_confidence_writer: ./limits_confidence_writer.yml
+    report_assembler: ./report_assembler.yml
+    completeness_judge: ./completeness_judge.yml
+    targeted_repair: ./targeted_repair.yml
+
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: collect_corpus_signals
+
+    collect_corpus_signals:
+      action: collect_corpus_signals
+      transitions:
+        - to: write_key_outcome
+
+    write_key_outcome:
+      agent: key_outcome_writer
+      execution:
+        type: retry
+        backoffs: [2, 8]
+      input:
+        title: context.title
+        authors: context.authors
+        abstract: context.abstract
+        section_text: context.section_text
+        token_target: context.token_target_key_outcome
+      output_to_context:
+        key_outcome: output.content
+      transitions:
+        - to: write_why_hypotheses
+
+    write_why_hypotheses:
+      agent: why_hypothesis_writer
+      execution:
+        type: retry
+        backoffs: [2, 8]
+      input:
+        title: context.title
+        key_outcome: context.key_outcome
+        abstract: context.abstract
+        section_text: context.section_text
+        corpus_signals: context.corpus_signals
+        corpus_neighbors: context.corpus_neighbors
+        token_target: context.token_target_why
+      output_to_context:
+        why_hypotheses: output.content
+      transitions:
+        - to: write_reproduction
+
+    write_reproduction:
+      agent: reproduction_writer
+      execution:
+        type: retry
+        backoffs: [2, 8]
+      input:
+        title: context.title
+        key_outcome: context.key_outcome
+        section_text: context.section_text
+        reference_count: context.reference_count
+        token_target: context.token_target_reproduction
+      output_to_context:
+        reproduction_notes: output.content
+      transitions:
+        - to: write_limits_confidence
+
+    write_limits_confidence:
+      agent: limits_confidence_writer
+      execution:
+        type: retry
+        backoffs: [2, 8]
+      input:
+        title: context.title
+        key_outcome: context.key_outcome
+        why_hypotheses: context.why_hypotheses
+        reproduction_notes: context.reproduction_notes
+        corpus_signals: context.corpus_signals
+        token_target: context.token_target_limits
+      output_to_context:
+        limits_confidence: output.content
+      transitions:
+        - to: derive_terminology_tags
+
+    derive_terminology_tags:
+      action: derive_terminology_tags
+      transitions:
+        - to: assemble_report
+
+    assemble_report:
+      agent: report_assembler
+      execution:
+        type: retry
+        backoffs: [2, 8]
+      input:
+        title: context.title
+        authors: context.authors
+        key_outcome: context.key_outcome
+        why_hypotheses: context.why_hypotheses
+        reproduction_notes: context.reproduction_notes
+        limits_confidence: context.limits_confidence
+      output_to_context:
+        report_body: output.content
+      transitions:
+        - to: judge_report
+
+    judge_report:
+      agent: completeness_judge
+      execution:
+        type: retry
+        backoffs: [2, 8]
+      input:
+        report_body: context.report_body
+      output_to_context:
+        judge_decision_raw: output.content
+      transitions:
+        - to: normalize_judge_decision
+
+    normalize_judge_decision:
+      action: normalize_judge_decision
+      transitions:
+        - condition: "context.judge_decision == 'PASS'"
+          to: prepend_frontmatter_v2
+        - condition: "context.judge_decision == 'FAIL'"
+          to: failed_incomplete
+        - condition: "context.repair_attempted == true"
+          to: failed_incomplete
+        - to: targeted_repair_once
+
+    targeted_repair_once:
+      agent: targeted_repair
+      execution:
+        type: retry
+        backoffs: [2, 8]
+      input:
+        report_body: context.report_body
+      output_to_context:
+        report_body: output.content
+      transitions:
+        - to: mark_repair_attempted
+
+    mark_repair_attempted:
+      action: set_repair_attempted
+      transitions:
+        - to: judge_report
+
+    prepend_frontmatter_v2:
+      action: prepend_frontmatter_v2
+      transitions:
+        - to: done
+
+    done:
+      type: final
+      output:
+        title: context.title
+        key_outcome: context.key_outcome
+        terminology_tags: context.terminology_tags
+        domain_tags: context.domain_tags
+        quality_gate_decision: context.judge_decision
+        formatted_report: context.formatted_report
+
+    failed_incomplete:
+      type: final
+      output:
+        error: "Completeness gate failed after one repair pass"
+        quality_gate_decision: context.judge_decision
+        judge_decision_raw: context.judge_decision_raw
+        report_body: context.report_body
+
+metadata:
+  description: "V2 simplified pipeline with corpus signals, terminology tagging, and a shared completeness judge"
+  tags: ["v2", "quality-first", "hypothesis-ledger", "terminology-tags"]

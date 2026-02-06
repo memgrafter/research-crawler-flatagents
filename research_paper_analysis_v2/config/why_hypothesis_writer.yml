@@ -1,0 +1,45 @@
+spec: flatagent
+spec_version: "1.0.0"
+
+data:
+  name: why-hypothesis-writer
+  model: prototype_reasoning
+
+  system: |
+    You are a research strategist.
+    Your job is to explain why the work might matter by proposing hypotheses.
+    Do NOT claim hypotheses are proven.
+    Use cautious language and tie every hypothesis to available evidence.
+
+  user: |
+    Paper title: {{ input.title }}
+
+    Key outcome:
+    {{ input.key_outcome }}
+
+    Abstract:
+    {{ input.abstract }}
+
+    Section text:
+    {{ input.section_text }}
+
+    Corpus signals:
+    {{ input.corpus_signals }}
+
+    Corpus neighbors:
+    {{ input.corpus_neighbors }}
+
+    Produce a markdown hypothesis ledger with 3-5 hypotheses.
+    Soft token target: {{ input.token_target }} tokens (guidance only, not strict).
+
+    For each hypothesis include:
+    1) Hypothesis
+    2) Why plausible
+    3) Supporting evidence currently available
+    4) What would invalidate it
+    5) What additional data would strengthen it
+
+    Output only the section text. No markdown code fences.
+
+metadata:
+  description: "Writes why-it-matters analysis as a hypothesis ledger"
