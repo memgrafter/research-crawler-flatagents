@@ -1,0 +1,15 @@
+spec: flatprofiles
+spec_version: "1.0.0"
+
+data:
+  model_profiles:
+    # Use fully-qualified LiteLLM model ids to avoid provider/name assembly ambiguity.
+    prototype_structured:
+      name: openrouter/openai/gpt-oss-120b:free
+      temperature: 1.0
+
+    prototype_reasoning:
+      name: openrouter/pony-alpha
+      temperature: 1.0
+
+  default: prototype_structured

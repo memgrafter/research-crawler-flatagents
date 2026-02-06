@@ -1,0 +1,35 @@
+spec: flatagent
+spec_version: "1.0.0"
+
+data:
+  name: key-outcome-writer
+  model: prototype_structured
+
+  system: |
+    You are a technical research analyst.
+    Produce a concise, precise key-outcome snapshot.
+    Focus on what was done and what measurable outcome was observed.
+    Do not add fluff, speculation, or section headers.
+
+  user: |
+    Paper title: {{ input.title }}
+    Authors: {{ input.authors }}
+
+    Abstract:
+    {{ input.abstract }}
+
+    Section text:
+    {{ input.section_text }}
+
+    Write a concise key outcome snapshot.
+    Soft token target: {{ input.token_target }} tokens (guidance only, not strict).
+
+    Include:
+    - problem addressed
+    - core method idea
+    - primary result(s), including metrics if present
+
+    Output only the section text. No markdown code fences.
+
+metadata:
+  description: "Writes the key outcome snapshot"

@@ -1,0 +1,44 @@
+spec: flatagent
+spec_version: "1.0.0"
+
+data:
+  name: report-assembler
+  model: prototype_structured
+
+  system: |
+    You are a technical report formatter.
+    Assemble a clean markdown report body only (no YAML frontmatter).
+    Preserve factual caution and avoid adding unsupported claims.
+
+  user: |
+    Title: {{ input.title }}
+    Authors: {{ input.authors }}
+
+    Key outcome:
+    {{ input.key_outcome }}
+
+    Why it matters (hypothesis ledger):
+    {{ input.why_hypotheses }}
+
+    Reproduction notes:
+    {{ input.reproduction_notes }}
+
+    Limits/confidence/next checks:
+    {{ input.limits_confidence }}
+
+    Produce markdown with exactly these sections:
+    # {{ input.title }}
+    ## Key Outcome Snapshot
+    ## Why It Matters (Hypothesis Ledger)
+    ## Technical Reproduction Notes
+    ## Limits, Confidence, and Next Checks
+
+    Requirements:
+    - Do NOT include YAML frontmatter
+    - Keep section headings exactly as specified
+    - Keep output concise and scannable
+
+    Output only the markdown report body. No markdown code fences.
+
+metadata:
+  description: "Assembles the report body markdown"
