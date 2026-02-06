@@ -22,6 +22,7 @@ from flatmachines import LoggingHooks
 from flatagents import get_logger, setup_logging
 
 DEFAULT_LOG_DIR = Path(__file__).parent.parent.parent / "logs"
+SYSTEM_LOG_DIR = DEFAULT_LOG_DIR / "system"
 
 if "FLATAGENTS_LOG_LEVEL" not in os.environ:
     os.environ["FLATAGENTS_LOG_LEVEL"] = "INFO"
@@ -387,6 +388,13 @@ class JsonValidationHooks(LoggingHooks):
             context["_rate_limit_redirect"] = redirect
         
         self._capture_output_error(state_name, context, output)
+
+        # Cast quality_score to int wherever it appears
+        if output and "quality_score" in output:
+            try:
+                output["quality_score"] = int(output["quality_score"])
+            except (ValueError, TypeError):
+                pass
 
         if state_name in self._VALIDATION_STATES:
             spec = self._VALIDATION_STATES[state_name]

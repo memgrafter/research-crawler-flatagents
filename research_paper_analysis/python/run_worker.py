@@ -1,4 +1,4 @@
-#!/usr/bin/env .venv/bin/python
+#!/usr/bin/env -S uv run python
 """
 Run a single paper analysis worker.
 

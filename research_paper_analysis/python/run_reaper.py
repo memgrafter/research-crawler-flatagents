@@ -1,12 +1,12 @@
-#!/usr/bin/env python
+#!/usr/bin/env -S uv run python
 """
 Run the stale worker reaper.
 
 Finds workers that have missed heartbeats and releases their papers.
 
 Usage:
-    python run_reaper.py
-    python run_reaper.py --threshold 120
+    ./run_reaper.py
+    ./run_reaper.py --threshold 120
 """
 
 import argparse
@@ -20,15 +20,10 @@ SRC_DIR = Path(__file__).parent / "src"
 sys.path.insert(0, str(SRC_DIR))
 
 from flatmachines import FlatMachine
-from research_paper_analysis.hooks import configure_log_file
+from research_paper_analysis.hooks import configure_log_file, SYSTEM_LOG_DIR
 
 CONFIG_DIR = Path(__file__).parent.parent / "config"
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
 logger = logging.getLogger(__name__)
 
 
@@ -38,7 +33,7 @@ async def main():
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     args = parser.parse_args()
 
-    configure_log_file(arxiv_id="reaper")
+    configure_log_file(arxiv_id="reaper", log_dir=SYSTEM_LOG_DIR)
 
     config_path = CONFIG_DIR / "stale_worker_reaper.yml"
 
