@@ -54,6 +54,22 @@ def parse_args() -> argparse.Namespace:
         help="Log progress every N entries (0 to disable)",
     )
     parser.add_argument(
+        "--throttle-seconds",
+        type=float,
+        default=None,
+        help="Optional delay between API requests (seconds)",
+    )
+    parser.add_argument(
+        "--submitted-since",
+        default=None,
+        help="ISO timestamp to filter submitted papers (e.g., 2025-01-01T00:00:00Z)",
+    )
+    parser.add_argument(
+        "--submitted-until",
+        default=None,
+        help="ISO timestamp to exclude submissions after this time",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Fetch and parse without writing to SQLite",
@@ -76,6 +92,9 @@ async def run(args: argparse.Namespace) -> dict:
         "since": args.since,
         "until": args.until,
         "progress_every": args.progress_every,
+        "throttle_seconds": args.throttle_seconds,
+        "submitted_since": args.submitted_since,
+        "submitted_until": args.submitted_until,
         "dry_run": args.dry_run,
     }
 

@@ -7,7 +7,7 @@ data:
   # Finds workers that have missed heartbeats and releases their papers
   
   context:
-    stale_threshold_seconds: "{{ input.stale_threshold_seconds | default(120) }}"
+    stale_threshold_seconds: 120
   
   hooks:
     module: research_paper_analysis.distributed_hooks

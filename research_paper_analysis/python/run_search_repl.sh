@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 # --- Configuration ---
 VENV_PATH=".venv"
@@ -9,10 +9,6 @@ LOCAL_INSTALL=false
 UPGRADE=false
 SHOW_HELP=false
 JSON_LOG=false
-MAX_WORKERS=2
-LIMIT=""
-DB_PATH_OVERRIDE=""
-QUEUE_ONLY=false
 PASSTHROUGH_ARGS=()
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -28,29 +24,8 @@ while [[ $# -gt 0 ]]; do
             JSON_LOG=true
             shift
             ;;
-        --limit)
-            LIMIT="$2"
-            PASSTHROUGH_ARGS+=("$1" "$2")
-            shift 2
-            ;;
-        --db)
-            DB_PATH_OVERRIDE="$2"
-            PASSTHROUGH_ARGS+=("$1" "$2")
-            shift 2
-            ;;
-        --queue-only|-q)
-            QUEUE_ONLY=true
-            PASSTHROUGH_ARGS+=("--queue-only")
-            shift
-            ;;
-        -w|--workers)
-            MAX_WORKERS="$2"
-            PASSTHROUGH_ARGS+=("$1" "$2")
-            shift 2
-            ;;
         -h|--help)
             SHOW_HELP=true
-            PASSTHROUGH_ARGS+=("$1")
             shift
             ;;
         *)
@@ -60,8 +35,39 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+print_help() {
+    cat <<'HELP'
+Usage: run_search_repl.sh [wrapper options] [search options]
+
+Wrapper options:
+  -l, --local            Use local flatagents source
+  -u, --upgrade          Reinstall/upgrade dependencies
+  -j, --json-log         JSON log format
+  -h, --help             Show this help
+
+Search options (passed to research_paper_analysis.search_repl):
+  --db PATH              SQLite DB path
+  --limit N              Number of matches to return
+  --query TEXT           FTS5 query
+  --query-file PATH      Newline-delimited term list (OR joined)
+  --order-by ORDER       bm25 | impact | hybrid
+  --llm-relevant-only    Restrict to llm_relevant = 1
+  --rebuild-fts          Force FTS rebuild
+  --auto-summarize       Queue all matches without prompts
+  --show-count           Print total match count (slow on large DBs)
+
+Notes:
+  - This wrapper only updates the DB queue; it does not spawn workers.
+HELP
+}
+
+if [ "$SHOW_HELP" = true ]; then
+    print_help
+    exit 0
+fi
+
 # --- Script Logic ---
-echo "--- Research Paper Search REPL (Human Loop) ---"
+echo "--- Research Paper Search (DB Queue Update) ---"
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
@@ -81,40 +87,7 @@ find_project_root() {
 }
 
 PROJECT_ROOT="$(find_project_root "$SCRIPT_DIR")"
-
 PYTHON_SDK_PATH="$PROJECT_ROOT/flatagents"
-
-DEFAULT_DB_PATH="$PROJECT_ROOT/arxiv_crawler/data/arxiv.sqlite"
-DB_PATH="$DEFAULT_DB_PATH"
-if [ -n "$DB_PATH_OVERRIDE" ]; then
-    DB_PATH="$DB_PATH_OVERRIDE"
-fi
-
-count_summarizer_pending() {
-    if ! command -v sqlite3 >/dev/null 2>&1; then
-        echo ""
-        return 0
-    fi
-    if [ ! -f "$DB_PATH" ]; then
-        echo ""
-        return 0
-    fi
-    sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM paper_queue WHERE status IN ('pending','processing') AND priority > 0" 2>/dev/null || true
-}
-
-count_active_workers() {
-    if ! command -v sqlite3 >/dev/null 2>&1; then
-        echo ""
-        return 0
-    fi
-    if [ ! -f "$DB_PATH" ]; then
-        echo ""
-        return 0
-    fi
-    sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM worker_registry WHERE status = 'active'" 2>/dev/null || true
-}
-
-BASE_PENDING="$(count_summarizer_pending)"
 
 # Create venv if missing
 if [ ! -d "$VENV_PATH" ]; then
@@ -170,12 +143,8 @@ else
     echo "  - All dependencies already installed; skipping."
 fi
 
-if [ "$SHOW_HELP" = true ]; then
-    echo "Wrapper options: --local/-l (use local flatagents), --upgrade/-u (reinstall/upgrade deps), --json-log/-j (JSON log format), -w/--workers (max workers), --queue-only/-q (queue without workers)."
-fi
-
 # Run
-echo "🚀 Starting search REPL..."
+echo "🚀 Starting search (DB queue update)..."
 echo "---"
 
 # Set up logging defaults for flatagents workers (hooks will honor these)
@@ -188,74 +157,9 @@ if [ "$JSON_LOG" = true ]; then
 else
     export FLATAGENTS_LOG_FORMAT="${FLATAGENTS_LOG_FORMAT:-standard}"
 fi
-echo "📝 Logs: $FLATAGENTS_LOG_DIR (format=$FLATAGENTS_LOG_FORMAT, level=$FLATAGENTS_LOG_LEVEL)"
 
-if [ "$QUEUE_ONLY" = true ]; then
-    echo "🧾 Queue-only mode: skipping scale daemon."
-    DAEMON_PID=""
-    DAEMON_STOPPED=true
-else
-    # Start the scaling daemon in background
-    echo "🔄 Starting scale daemon (background, max_workers=$MAX_WORKERS)..."
-    "$VENV_PATH/bin/python" "$SCRIPT_DIR/run_checker.py" --daemon -m "$MAX_WORKERS" > "$LOG_DIR/scale_daemon.log" 2>&1 &
-    DAEMON_PID=$!
-    DAEMON_STOPPED=false
-    echo "   Daemon PID: $DAEMON_PID (will continue after REPL exits)"
-    echo "   To stop: kill $DAEMON_PID"
-fi
+echo "📝 Logs: $FLATAGENTS_LOG_DIR (format=$FLATAGENTS_LOG_FORMAT, level=$FLATAGENTS_LOG_LEVEL)"
 
 "$VENV_PATH/bin/python" -m research_paper_analysis.search_repl "${PASSTHROUGH_ARGS[@]}"
 echo "---"
-
-if [ "$QUEUE_ONLY" = true ]; then
-    echo "✅ Search REPL complete! (queue-only)"
-    echo "   Scale daemon not started."
-    exit 0
-fi
-
-if [[ "$BASE_PENDING" =~ ^[0-9]+$ ]]; then
-    AFTER_PENDING="$(count_summarizer_pending)"
-    if [[ "$AFTER_PENDING" =~ ^[0-9]+$ ]]; then
-        if (( AFTER_PENDING == 0 )); then
-            echo "🛑 No prioritized jobs queued; stopping scale daemon."
-            kill "$DAEMON_PID" 2>/dev/null || true
-            DAEMON_STOPPED=true
-        else
-            if [ -n "$LIMIT" ]; then
-                echo "⏳ Waiting for $AFTER_PENDING of $LIMIT prioritized job(s) to finish..."
-            else
-                echo "⏳ Waiting for $AFTER_PENDING prioritized job(s) to finish..."
-            fi
-            SEEN_ACTIVE=false
-            while true; do
-                CURRENT="$(count_summarizer_pending)"
-                ACTIVE_WORKERS="$(count_active_workers)"
-                if [[ "$ACTIVE_WORKERS" =~ ^[0-9]+$ ]] && (( ACTIVE_WORKERS > 0 )); then
-                    SEEN_ACTIVE=true
-                fi
-                if [[ "$CURRENT" =~ ^[0-9]+$ ]] && (( CURRENT == 0 )); then
-                    echo "✅ Prioritized jobs finished; stopping scale daemon."
-                    kill "$DAEMON_PID" 2>/dev/null || true
-                    DAEMON_STOPPED=true
-                    break
-                fi
-                if [ "$SEEN_ACTIVE" = true ] && [[ "$ACTIVE_WORKERS" =~ ^[0-9]+$ ]] && (( ACTIVE_WORKERS == 0 )); then
-                    echo "⚠️ No active workers remain; stopping scale daemon."
-                    kill "$DAEMON_PID" 2>/dev/null || true
-                    DAEMON_STOPPED=true
-                    break
-                fi
-                sleep 2
-            done
-        fi
-    fi
-fi
-
-echo "✅ Search REPL complete!"
-if [ "$DAEMON_STOPPED" = true ]; then
-    echo "   Scale daemon stopped."
-else
-    echo "   Scale daemon still running (PID: $DAEMON_PID)"
-    echo "   To stop: kill $DAEMON_PID"
-fi
-echo "   Daemon log: $LOG_DIR/scale_daemon.log"
+echo "✅ Search update complete! (DB queue only)"

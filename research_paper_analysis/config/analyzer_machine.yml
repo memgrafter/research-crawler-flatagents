@@ -13,11 +13,11 @@ data:
     class: JsonValidationHooks
 
   context:
-    title: "{{ input.title }}"
-    authors: "{{ input.authors }}"
-    abstract: "{{ input.abstract }}"
-    section_text: "{{ input.section_text }}"
-    worker_id: "{{ input.worker_id }}"
+    title: input.title
+    authors: input.authors
+    abstract: input.abstract
+    section_text: input.section_text
+    worker_id: input.worker_id
     rate_limit_agent_states:
       - analyze_abstract
       - extract_abstract
@@ -62,11 +62,11 @@ data:
         type: retry
         backoffs: [2, 8]
       input:
-        title: "{{ context.title }}"
-        authors: "{{ context.authors }}"
-        abstract: "{{ context.abstract }}"
+        title: context.title
+        authors: context.authors
+        abstract: context.abstract
       output_to_context:
-        raw_abstract_analysis: "{{ output.content }}"
+        raw_abstract_analysis: output.content
       transitions:
         - to: extract_abstract
 
@@ -77,11 +77,11 @@ data:
         backoffs: [2, 8, 16, 35]
         jitter: 0.1
       input:
-        text: "{{ context.raw_abstract_analysis }}"
+        text: context.raw_abstract_analysis
       output_to_context:
-        key_findings: "{{ output.key_findings }}"
-        methodology: "{{ output.methodology }}"
-        contributions: "{{ output.contributions }}"
+        key_findings: output.key_findings
+        methodology: output.methodology
+        contributions: output.contributions
       transitions:
         - condition: "context.json_fix_required == true"
           to: fix_abstract
@@ -94,13 +94,13 @@ data:
         backoffs: [2, 8, 16, 35]
         jitter: 0.1
       input:
-        text: "{{ context.json_fix_source }}"
-        invalid_json: "{{ context.json_fix_raw }}"
-        error: "{{ context.json_fix_error }}"
+        text: context.json_fix_source
+        invalid_json: context.json_fix_raw
+        error: context.json_fix_error
       output_to_context:
-        key_findings: "{{ output.key_findings }}"
-        methodology: "{{ output.methodology }}"
-        contributions: "{{ output.contributions }}"
+        key_findings: output.key_findings
+        methodology: output.methodology
+        contributions: output.contributions
       transitions:
         - condition: "context.json_fix_failed == true"
           to: json_failure
@@ -112,11 +112,11 @@ data:
         type: retry
         backoffs: [2, 8]
       input:
-        title: "{{ context.title }}"
-        key_findings: "{{ context.key_findings }}"
-        section_text: "{{ context.section_text }}"
+        title: context.title
+        key_findings: context.key_findings
+        section_text: context.section_text
       output_to_context:
-        raw_section_analysis: "{{ output.content }}"
+        raw_section_analysis: output.content
       transitions:
         - to: extract_sections
 
@@ -127,10 +127,10 @@ data:
         backoffs: [2, 8, 16, 35]
         jitter: 0.1
       input:
-        text: "{{ context.raw_section_analysis }}"
+        text: context.raw_section_analysis
       output_to_context:
-        technical_details: "{{ output.technical_details }}"
-        results: "{{ output.results }}"
+        technical_details: output.technical_details
+        results: output.results
       transitions:
         - condition: "context.json_fix_required == true"
           to: fix_sections
@@ -143,12 +143,12 @@ data:
         backoffs: [2, 8, 16, 35]
         jitter: 0.1
       input:
-        text: "{{ context.json_fix_source }}"
-        invalid_json: "{{ context.json_fix_raw }}"
-        error: "{{ context.json_fix_error }}"
+        text: context.json_fix_source
+        invalid_json: context.json_fix_raw
+        error: context.json_fix_error
       output_to_context:
-        technical_details: "{{ output.technical_details }}"
-        results: "{{ output.results }}"
+        technical_details: output.technical_details
+        results: output.results
       transitions:
         - condition: "context.json_fix_failed == true"
           to: json_failure
@@ -166,18 +166,18 @@ data:
     done:
       type: final
       output:
-        key_findings: "{{ context.key_findings }}"
-        methodology: "{{ context.methodology }}"
-        contributions: "{{ context.contributions }}"
-        technical_details: "{{ context.technical_details }}"
-        results: "{{ context.results }}"
+        key_findings: context.key_findings
+        methodology: context.methodology
+        contributions: context.contributions
+        technical_details: context.technical_details
+        results: context.results
 
     json_failure:
       type: final
       output:
         error: "Invalid JSON from {{ context.json_fix_state }}"
-        json_error: "{{ context.json_fix_error }}"
-        json_invalid: "{{ context.json_fix_raw }}"
+        json_error: context.json_fix_error
+        json_invalid: context.json_fix_raw
 
 metadata:
   description: "Peer machine for paper content analysis"

@@ -77,7 +77,8 @@ export CEREBRAS_API_KEY="your-key"
 ./run.sh
 ```
 
-Install behavior: `run.sh` skips dependency installs if required packages are already present in `.venv`. Use `--upgrade`/`-u` to force reinstall/upgrade.
+`run.sh` uses `uv sync` to create the venv and install all dependencies in one step.
+All deps are declared in `pyproject.toml`.
 
 Analyze a specific arXiv paper by ID or URL:
 
@@ -88,34 +89,67 @@ Analyze a specific arXiv paper by ID or URL:
 ./run.sh --arxiv https://arxiv.org/html/1706.03762
 ```
 
+## Local Development (flatagents / flatmachines)
+
+To develop against local checkouts of flatagents and flatmachines, edit
+`pyproject.toml` — the `[tool.uv.sources]` block at the bottom controls this:
+
+```toml
+# Uncommented = local editable installs (default for dev)
+[tool.uv.sources]
+flatagents = { path = "../../../flatagents/sdk/python/flatagents", editable = true }
+flatmachines = { path = "../../../flatagents/sdk/python/flatmachines", editable = true }
+```
+
+Then run `uv sync` (or just `./run.sh` — it calls `uv sync` for you).
+Code changes in the local flatagents/flatmachines are reflected immediately
+since they're installed as editable.
+
+To switch back to PyPI releases, comment out the `[tool.uv.sources]` block
+and run `uv sync` again.
+
+No `--local` or `--upgrade` flags needed — `uv sync` is declarative and
+always makes the venv match what `pyproject.toml` says.
+
 Run the human-loop summarizer REPL (batch selection + approvals):
 
 ```bash
 ./run_summarizer_repl.sh --db ../arxiv_crawler/data/arxiv.sqlite --limit 10
 ```
 
-Force reinstall/upgrade before running the REPL:
-
-```bash
-./run_summarizer_repl.sh --upgrade --db ../arxiv_crawler/data/arxiv.sqlite --limit 10
-```
-
-Run the search REPL (FTS5 over title+abstract, then human-loop approvals):
+Run the search REPL (FTS5 over title+abstract, then human-loop approvals; DB queue update only):
 
 ```bash
 ./run_search_repl.sh --db ../arxiv_crawler/data/arxiv.sqlite --limit 20 --query "retrieval augmented generation"
 ```
 
-Force reinstall/upgrade before running the REPL:
+Queue the top matches without prompts:
 
 ```bash
-./run_search_repl.sh --upgrade --db ../arxiv_crawler/data/arxiv.sqlite --limit 20 --query "retrieval augmented generation"
+./run_search_repl.sh --db ../arxiv_crawler/data/arxiv.sqlite --limit 20 --query "retrieval augmented generation" --auto-summarize
+```
+
+Use a term list file + impact ordering (top papers first):
+
+```bash
+./run_search_repl.sh --db ../arxiv_crawler/data/arxiv.sqlite --limit 30 --query-file queries/agents_autonomous_systems.txt --order-by impact --llm-relevant-only
+```
+
+Wrapper for Agents & Autonomous Systems search (defaults to impact ordering):
+
+```bash
+./run_agents_autonomous_search.sh
 ```
 
 Notes:
 - First run may build the FTS index (one-time). Use `--rebuild-fts` to force rebuild.
 - The FTS query supports SQLite FTS5 syntax (phrases, OR, NEAR, etc.).
+- `--query-file` loads newline-delimited terms and joins them with OR (combined with `--query` via AND).
+- `--order-by impact` sorts by FMR score → max author h-index → citations (BM25 as tie-breaker).
+- `--auto-summarize` skips prompts and queues all matches.
+- `--show-count` prints total match count (slow on large DBs).
 - Use `--llm-relevant-only` to restrict results to papers marked `llm_relevant = 1`.
+- `run_search_repl.sh` only updates the DB queue; it does not spawn workers.
 
 ## Example Output
 

@@ -10,7 +10,7 @@ import asyncio
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from flatagents import FlatMachine, setup_logging, get_logger
 
@@ -39,6 +39,29 @@ def parse_args() -> argparse.Namespace:
         default=500,
         help="Log progress every N entries (0 to disable)",
     )
+    parser.add_argument(
+        "--throttle-seconds",
+        type=float,
+        default=None,
+        help="Optional delay between API requests (seconds)",
+    )
+    parser.add_argument(
+        "--use-submitted-date",
+        action="store_true",
+        help="Filter using submittedDate ranges instead of updated-at ranges",
+    )
+    parser.add_argument(
+        "--slice-retries",
+        type=int,
+        default=3,
+        help="Retry a slice on failure before aborting",
+    )
+    parser.add_argument(
+        "--slice-retry-sleep",
+        type=float,
+        default=60.0,
+        help="Base sleep between slice retries (seconds)",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Skip writes to SQLite")
     parser.add_argument("--sleep-seconds", type=float, default=2.0, help="Sleep between slices")
     return parser.parse_args()
@@ -52,10 +75,13 @@ def run_slice(
     config_path: Path,
     db_path: str,
     categories: List[str],
-    since_iso: str,
-    until_iso: str,
+    since_iso: Optional[str],
+    until_iso: Optional[str],
+    submitted_since: Optional[str],
+    submitted_until: Optional[str],
     max_results: int,
     progress_every: int,
+    throttle_seconds: Optional[float],
     dry_run: bool,
 ) -> dict:
     machine = FlatMachine(config_file=str(config_path), hooks=CrawlerHooks())
@@ -65,7 +91,10 @@ def run_slice(
         "max_results": max_results,
         "since": since_iso,
         "until": until_iso,
+        "submitted_since": submitted_since,
+        "submitted_until": submitted_until,
         "progress_every": progress_every,
+        "throttle_seconds": throttle_seconds,
         "dry_run": dry_run,
     }
     return asyncio.run(machine.execute(input=payload))
@@ -86,17 +115,39 @@ def main() -> None:
         slice_end = min(current + timedelta(days=args.window_days), end_dt + timedelta(days=1))
         since_iso = current.isoformat()
         until_iso = (slice_end - timedelta(seconds=1)).isoformat()
-        logger.info("Backfill slice: %s to %s", since_iso, until_iso)
-        result = run_slice(
-            config_path=config_path,
-            db_path=args.db_path,
-            categories=categories,
-            since_iso=since_iso,
-            until_iso=until_iso,
-            max_results=args.max_results,
-            progress_every=args.progress_every,
-            dry_run=args.dry_run,
-        )
+        if args.use_submitted_date:
+            submitted_since = since_iso
+            submitted_until = until_iso
+            since_iso = None
+            until_iso = None
+        else:
+            submitted_since = None
+            submitted_until = None
+        logger.info("Backfill slice: %s to %s", current.isoformat(), (slice_end - timedelta(seconds=1)).isoformat())
+        attempt = 0
+        while True:
+            try:
+                result = run_slice(
+                    config_path=config_path,
+                    db_path=args.db_path,
+                    categories=categories,
+                    since_iso=since_iso,
+                    until_iso=until_iso,
+                    submitted_since=submitted_since,
+                    submitted_until=submitted_until,
+                    max_results=args.max_results,
+                    progress_every=args.progress_every,
+                    throttle_seconds=args.throttle_seconds,
+                    dry_run=args.dry_run,
+                )
+                break
+            except Exception as exc:  # pylint: disable=broad-except
+                attempt += 1
+                if attempt > args.slice_retries:
+                    raise
+                sleep_for = args.slice_retry_sleep * attempt
+                logger.warning("Slice failed (%s); retrying in %.1fs", exc, sleep_for)
+                time.sleep(sleep_for)
         logger.info("Slice result: %s", result)
         current = slice_end
         if current <= end_dt:

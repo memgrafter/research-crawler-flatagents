@@ -1,134 +1,22 @@
 #!/bin/bash
 set -e
 
-# --- Configuration ---
-VENV_PATH=".venv"
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
 
-# --- Parse Arguments ---
-LOCAL_INSTALL=false
-UPGRADE=false
-SHOW_HELP=false
-PASSTHROUGH_ARGS=()
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --local|-l)
-            LOCAL_INSTALL=true
-            shift
-            ;;
-        --upgrade|-u)
-            UPGRADE=true
-            shift
-            ;;
-        -h|--help)
-            SHOW_HELP=true
-            PASSTHROUGH_ARGS+=("$1")
-            shift
-            ;;
-        *)
-            PASSTHROUGH_ARGS+=("$1")
-            shift
-            ;;
+echo "--- Research Paper Analysis ---"
+
+# Strip legacy flags that are no longer needed (local/upgrade handled by pyproject.toml)
+ARGS=()
+for arg in "$@"; do
+    case $arg in
+        -l|--local|-u|--upgrade) ;;  # no-ops, kept for back-compat
+        *) ARGS+=("$arg") ;;
     esac
 done
 
-# --- Script Logic ---
-echo "--- Research Paper Analysis Demo (Machine Topology + Checkpoint) ---"
+# One command: creates venv, installs all deps (respects [tool.uv.sources] for local dev)
+uv sync
 
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-
-# Establish project root by walking up to find .git
-# This ensures paths work regardless of where the script is invoked from
-find_project_root() {
-    local dir="$1"
-    while [[ "$dir" != "/" ]]; do
-        if [[ -e "$dir/.git" ]]; then
-            echo "$dir"
-            return 0
-        fi
-        dir="$(dirname "$dir")"
-    done
-    echo "Error: Could not find project root (no .git found)" >&2
-    return 1
-}
-
-PROJECT_ROOT="$(find_project_root "$SCRIPT_DIR")"
-PYTHON_SDK_PATH="$PROJECT_ROOT/sdk/python"
-
-echo "📁 Project root: $PROJECT_ROOT"
-echo "📁 Python SDK: $PYTHON_SDK_PATH"
-
-cd "$SCRIPT_DIR"
-
-# 0. Ensure uv is installed
-if ! command -v uv &> /dev/null; then
-    echo "📥 Installing uv..."
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-    export PATH="$HOME/.local/bin:$PATH"
-fi
-
-# Create venv
-echo "🔧 Ensuring virtual environment..."
-if [ ! -d "$VENV_PATH" ]; then
-    uv venv "$VENV_PATH"
-else
-    echo "✅ Virtual environment already exists."
-fi
-
-is_module_installed() {
-    local module_name="$1"
-    "$VENV_PATH/bin/python" - <<PY >/dev/null 2>&1
-import importlib.util, sys
-sys.exit(0 if importlib.util.find_spec("$module_name") else 1)
-PY
-}
-
-needs_install() {
-    local module
-    for module in "$@"; do
-        if ! is_module_installed "$module"; then
-            return 0
-        fi
-    done
-    return 1
-}
-
-# Install dependencies
-echo "📦 Installing dependencies..."
-if [ "$UPGRADE" = true ] || needs_install flatagents research_paper_analysis; then
-    if [ "$LOCAL_INSTALL" = true ]; then
-        echo "  - Installing flatagents from local source..."
-        if [ "$UPGRADE" = true ]; then
-            uv pip install --python "$VENV_PATH/bin/python" -U -e "$PYTHON_SDK_PATH[litellm,metrics]"
-        else
-            uv pip install --python "$VENV_PATH/bin/python" -e "$PYTHON_SDK_PATH[litellm,metrics]"
-        fi
-    else
-        echo "  - Installing flatagents from PyPI..."
-        if [ "$UPGRADE" = true ]; then
-            uv pip install --python "$VENV_PATH/bin/python" -U "flatagents[litellm,metrics]"
-        else
-            uv pip install --python "$VENV_PATH/bin/python" "flatagents[litellm,metrics]"
-        fi
-    fi
-
-    echo "  - Installing research_paper_analysis package..."
-    if [ "$UPGRADE" = true ]; then
-        uv pip install --python "$VENV_PATH/bin/python" -U -e "$SCRIPT_DIR"
-    else
-        uv pip install --python "$VENV_PATH/bin/python" -e "$SCRIPT_DIR"
-    fi
-else
-    echo "  - All dependencies already installed; skipping."
-fi
-
-if [ "$SHOW_HELP" = true ]; then
-    echo "Wrapper options: --local/-l (use local flatagents), --upgrade/-u (reinstall/upgrade deps)."
-fi
-
-# Run
-echo "🚀 Running demo..."
-echo "---"
-"$VENV_PATH/bin/python" -m research_paper_analysis.main "${PASSTHROUGH_ARGS[@]}"
-echo "---"
-
-echo "✅ Demo complete!"
+echo "🚀 Running..."
+uv run python -m research_paper_analysis.main "${ARGS[@]}"

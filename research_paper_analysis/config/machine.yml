@@ -14,9 +14,9 @@ data:
 
   context:
     # Source metadata (optional)
-    arxiv_id: "{{ input.arxiv_id }}"
-    source_url: "{{ input.source_url }}"
-    worker_id: "{{ input.worker_id }}"
+    arxiv_id: input.arxiv_id
+    source_url: input.source_url
+    worker_id: input.worker_id
     rate_limit_agent_states:
       - format
       - extract_report
@@ -29,13 +29,13 @@ data:
     json_fix_raw: null
     json_fix_source: null
     # Pre-parsed structured input
-    title: "{{ input.title }}"
-    authors: "{{ input.authors }}"
-    abstract: "{{ input.abstract }}"
-    sections: "{{ input.sections }}"
-    section_text: "{{ input.section_text }}"
-    reference_count: "{{ input.reference_count }}"
-    references_sample: "{{ input.references_sample | tojson }}"
+    title: input.title
+    authors: input.authors
+    abstract: input.abstract
+    sections: input.sections
+    section_text: input.section_text
+    reference_count: input.reference_count
+    references_sample: input.references_sample
     # Analysis results (from peer machines)
     key_findings: null
     methodology: null
@@ -70,17 +70,17 @@ data:
     analyze:
       machine: analyzer
       input:
-        worker_id: "{{ context.worker_id }}"
-        title: "{{ context.title }}"
-        authors: "{{ context.authors }}"
-        abstract: "{{ context.abstract }}"
-        section_text: "{{ context.section_text }}"
+        worker_id: context.worker_id
+        title: context.title
+        authors: context.authors
+        abstract: context.abstract
+        section_text: context.section_text
       output_to_context:
-        key_findings: "{{ output.key_findings }}"
-        methodology: "{{ output.methodology }}"
-        contributions: "{{ output.contributions }}"
-        technical_details: "{{ output.technical_details }}"
-        results: "{{ output.results }}"
+        key_findings: output.key_findings
+        methodology: output.methodology
+        contributions: output.contributions
+        technical_details: output.technical_details
+        results: output.results
       transitions:
         - to: refine
 
@@ -88,18 +88,18 @@ data:
     refine:
       machine: refiner
       input:
-        worker_id: "{{ context.worker_id }}"
-        title: "{{ context.title }}"
-        authors: "{{ context.authors }}"
-        key_findings: "{{ context.key_findings }}"
-        methodology: "{{ context.methodology }}"
-        contributions: "{{ context.contributions }}"
-        technical_details: "{{ context.technical_details }}"
-        results: "{{ context.results }}"
-        reference_count: "{{ context.reference_count }}"
+        worker_id: context.worker_id
+        title: context.title
+        authors: context.authors
+        key_findings: context.key_findings
+        methodology: context.methodology
+        contributions: context.contributions
+        technical_details: context.technical_details
+        results: context.results
+        reference_count: context.reference_count
       output_to_context:
-        summary: "{{ output.summary }}"
-        quality_score: "{{ output.quality_score | int }}"
+        summary: output.summary
+        quality_score: output.quality_score
       transitions:
         - to: format
 
@@ -110,18 +110,18 @@ data:
         type: retry
         backoffs: [2, 8]
       input:
-        title: "{{ context.title }}"
-        authors: "{{ context.authors }}"
-        key_findings: "{{ context.key_findings }}"
-        methodology: "{{ context.methodology }}"
-        contributions: "{{ context.contributions }}"
-        technical_details: "{{ context.technical_details }}"
-        results: "{{ context.results }}"
-        summary: "{{ context.summary }}"
-        quality_score: "{{ context.quality_score }}"
-        reference_count: "{{ context.reference_count }}"
+        title: context.title
+        authors: context.authors
+        key_findings: context.key_findings
+        methodology: context.methodology
+        contributions: context.contributions
+        technical_details: context.technical_details
+        results: context.results
+        summary: context.summary
+        quality_score: context.quality_score
+        reference_count: context.reference_count
       output_to_context:
-        raw_report: "{{ output.content }}"
+        raw_report: output.content
       transitions:
         - to: extract_report
 
@@ -132,9 +132,9 @@ data:
         backoffs: [2, 8, 16, 35]
         jitter: 0.1
       input:
-        text: "{{ context.raw_report }}"
+        text: context.raw_report
       output_to_context:
-        formatted_report: "{{ output.report }}"
+        formatted_report: output.report
       transitions:
         - condition: "context.json_fix_required == true"
           to: fix_report
@@ -147,11 +147,11 @@ data:
         backoffs: [2, 8, 16, 35]
         jitter: 0.1
       input:
-        text: "{{ context.json_fix_source }}"
-        invalid_json: "{{ context.json_fix_raw }}"
-        error: "{{ context.json_fix_error }}"
+        text: context.json_fix_source
+        invalid_json: context.json_fix_raw
+        error: context.json_fix_error
       output_to_context:
-        formatted_report: "{{ output.report }}"
+        formatted_report: output.report
       transitions:
         - condition: "context.json_fix_failed == true"
           to: json_failure
@@ -161,8 +161,8 @@ data:
     prepend_frontmatter:
       action: prepend_frontmatter
       output_to_context:
-        frontmatter: "{{ output.frontmatter }}"
-        formatted_report: "{{ output.formatted_report }}"
+        frontmatter: output.frontmatter
+        formatted_report: output.formatted_report
       transitions:
         - to: done
 
@@ -178,19 +178,19 @@ data:
     done:
       type: final
       output:
-        title: "{{ context.title }}"
-        key_findings: "{{ context.key_findings }}"
-        summary: "{{ context.summary }}"
-        quality_score: "{{ context.quality_score }}"
-        formatted_report: "{{ context.formatted_report }}"
-        citation_count: "{{ context.reference_count }}"
+        title: context.title
+        key_findings: context.key_findings
+        summary: context.summary
+        quality_score: context.quality_score
+        formatted_report: context.formatted_report
+        citation_count: context.reference_count
 
     json_failure:
       type: final
       output:
         error: "Invalid JSON from {{ context.json_fix_state }}"
-        json_error: "{{ context.json_fix_error }}"
-        json_invalid: "{{ context.json_fix_raw }}"
+        json_error: context.json_fix_error
+        json_invalid: context.json_fix_raw
 
 metadata:
   description: "Production machine topology demo: analyzer + refiner peer machines"
