@@ -40,6 +40,5 @@ data:
       top_p: 0.95
       max_tokens: 150000
 
-
   default: default
-  override: cerebras-glm47
+  override: zaiglm47

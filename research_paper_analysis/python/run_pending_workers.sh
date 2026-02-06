@@ -19,8 +19,6 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-echo "--- Kick Off Pending Workers ---"
-
 # One command: creates venv, installs all deps (respects [tool.uv.sources] for local dev)
 uv sync
 
@@ -34,12 +32,10 @@ if [ "$JSON_LOG" = true ]; then
 else
     export FLATAGENTS_LOG_FORMAT="${FLATAGENTS_LOG_FORMAT:-standard}"
 fi
-echo "📝 Logs: $LOG_DIR (format=$FLATAGENTS_LOG_FORMAT, level=$FLATAGENTS_LOG_LEVEL)"
 
 # DB path
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DEFAULT_DB_PATH="$PROJECT_ROOT/arxiv_crawler/data/arxiv.sqlite"
 export ARXIV_DB_PATH="${DB_PATH_OVERRIDE:-$DEFAULT_DB_PATH}"
 
-echo "🚀 Running checker (max_workers=$MAX_WORKERS)..."
 uv run python run_checker.py --max-workers "$MAX_WORKERS" "${PASSTHROUGH_ARGS[@]}"

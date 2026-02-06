@@ -1,4 +1,4 @@
-#!/usr/bin/env .venv/bin/python
+#!/usr/bin/env -S uv run python
 """
 Run the paper analysis parallelization checker.
 
@@ -13,6 +13,7 @@ Usage:
 import argparse
 import asyncio
 import json
+import logging
 import re
 import sqlite3
 import sys
@@ -25,9 +26,12 @@ SRC_DIR = Path(__file__).parent / "src"
 sys.path.insert(0, str(SRC_DIR))
 
 from flatmachines import FlatMachine
+from research_paper_analysis.hooks import configure_log_file, SYSTEM_LOG_DIR
 
 CONFIG_DIR = Path(__file__).parent.parent / "config"
 DB_PATH = Path(__file__).parent.parent.parent / "arxiv_crawler" / "data" / "arxiv.sqlite"
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_retry_after(value: str | None) -> int | None:
@@ -168,9 +172,7 @@ async def run_reaper_check(stale_threshold_seconds: int) -> dict:
     config_path = CONFIG_DIR / "stale_worker_reaper.yml"
     machine = FlatMachine(config_file=str(config_path))
 
-    result = await machine.execute(input={
-        "stale_threshold_seconds": stale_threshold_seconds,
-    })
+    result = await machine.execute(input={})
 
     return result
 
@@ -196,15 +198,11 @@ async def daemon_mode(
     if row and row[0]:
         last_id = row[0]
 
-    print(
-        "Scale daemon started (poll={poll}s, max_workers={workers}, reap_interval={reap}s, reap_threshold={threshold}s)".format(
-            poll=poll_interval,
-            workers=max_workers,
-            reap=reap_interval,
-            threshold=reap_threshold,
-        )
+    logger.info(
+        "Scale daemon started (poll=%.1fs, max_workers=%d, reap_interval=%.0fs, reap_threshold=%ds)",
+        poll_interval, max_workers, reap_interval, reap_threshold,
     )
-    print(f"Watching for scaling events (starting from id={last_id})...")
+    logger.info("Watching for scaling events (starting from id=%d)", last_id)
 
     while True:
         try:
@@ -213,9 +211,9 @@ async def daemon_mode(
                     result = await run_reaper_check(reap_threshold)
                     reaped = result.get("reaped_count", 0)
                     if reaped:
-                        print(f"🧹 Reaped {reaped} stale worker(s).")
+                        logger.info("Reaped %d stale worker(s)", reaped)
                 except Exception as e:
-                    print(f"Error running reaper: {e}")
+                    logger.error("Error running reaper: %s", e)
                 last_reap = time.monotonic()
 
             now = time.monotonic()
@@ -223,9 +221,7 @@ async def daemon_mode(
                 delay = _rate_limit_delay(conn)
                 if delay:
                     scale_pause_until = now + delay
-                    print(
-                        f"\n⏳ Rate limit headers detected; pausing scaling for {delay:.0f}s."
-                    )
+                    logger.warning("Rate limit headers detected; pausing scaling for %ds", delay)
 
             # Check for new events
             cursor = conn.execute(
@@ -237,13 +233,11 @@ async def daemon_mode(
             if row and row[0]:
                 last_id = row[0]
                 idle_count = 0  # Reset idle counter
-                print(f"\n📡 Scaling event detected (id={last_id}), checking pool...")
+                logger.info("Scaling event detected (id=%d), checking pool...", last_id)
 
                 pause_remaining = scale_pause_until - time.monotonic()
                 if pause_remaining > 0:
-                    print(
-                        f"   ⏸️ Scaling paused for {pause_remaining:.0f}s due to rate limits."
-                    )
+                    logger.warning("Scaling paused for %.0fs due to rate limits", pause_remaining)
                 else:
                     result = await run_scaling_check(max_workers)
 
@@ -251,13 +245,11 @@ async def daemon_mode(
                     queue_depth = result.get("queue_depth", 0)
                     active_workers = result.get("active_workers", 0)
 
-                    print(
-                        f"   Queue: {queue_depth}, Active: {active_workers}, Spawned: {spawned}"
-                    )
+                    logger.info("Queue: %s, Active: %s, Spawned: %s", queue_depth, active_workers, spawned)
 
                 # Exit if queue empty and no workers active
                 if pause_remaining <= 0 and queue_depth == 0 and active_workers == 0:
-                    print("\n✅ All work complete (queue=0, workers=0). Daemon exiting.")
+                    logger.info("All work complete (queue=0, workers=0). Daemon exiting.")
                     break
             else:
                 idle_count += 1
@@ -275,34 +267,29 @@ async def daemon_mode(
                     active = cursor.fetchone()[0]
 
                     if pending == 0 and active == 0:
-                        print("\n✅ All work complete. Daemon exiting.")
+                        logger.info("All work complete. Daemon exiting.")
                         break
 
                     if pending > 0:
-                        print("\n⏳ No scaling events; running periodic scale check...")
                         pause_remaining = scale_pause_until - time.monotonic()
                         if pause_remaining > 0:
-                            print(
-                                f"   ⏸️ Scaling paused for {pause_remaining:.0f}s due to rate limits."
-                            )
+                            logger.warning("Scaling paused for %.0fs due to rate limits", pause_remaining)
                         else:
                             result = await run_scaling_check(max_workers)
                             spawned = result.get("spawned", 0)
                             queue_depth = result.get("queue_depth", pending)
                             active_workers = result.get("active_workers", active)
-                            print(
-                                f"   Queue: {queue_depth}, Active: {active_workers}, Spawned: {spawned}"
-                            )
+                            logger.info("Queue: %s, Active: %s, Spawned: %s", queue_depth, active_workers, spawned)
 
                     idle_count = 0  # Reset and keep checking
 
             await asyncio.sleep(poll_interval)
 
         except KeyboardInterrupt:
-            print("\nDaemon stopped.")
+            logger.info("Daemon stopped.")
             break
         except Exception as e:
-            print(f"Error in daemon loop: {e}")
+            logger.error("Error in daemon loop: %s", e)
             await asyncio.sleep(1)  # Back off on error
 
 
@@ -326,6 +313,8 @@ async def main():
     )
     args = parser.parse_args()
 
+    configure_log_file(arxiv_id="checker", log_dir=SYSTEM_LOG_DIR)
+
     if args.daemon:
         await daemon_mode(
             DB_PATH,
@@ -335,19 +324,16 @@ async def main():
             args.reap_threshold,
         )
     else:
-        print(f"Running parallelization checker (max_workers={args.max_workers})")
-        
+        logger.info("Running parallelization checker (max_workers=%d)", args.max_workers)
+
         result = await run_scaling_check(args.max_workers)
-        
+
         spawned = result.get("spawned", 0)
         queue_depth = result.get("queue_depth", 0)
         active_workers = result.get("active_workers", 0)
-        
-        print(f"\n✅ Checker complete!")
-        print(f"   Queue depth: {queue_depth}")
-        print(f"   Active workers: {active_workers}")
-        print(f"   Spawned: {spawned}")
-        
+
+        logger.info("Checker complete! Queue: %s, Active: %s, Spawned: %s", queue_depth, active_workers, spawned)
+
         return result
 
 
