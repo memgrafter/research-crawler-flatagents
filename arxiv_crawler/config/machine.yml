@@ -11,6 +11,9 @@ data:
     since: "{{ input.since }}"
     until: "{{ input.until }}"
     progress_every: "{{ input.progress_every | default(500) }}"
+    throttle_seconds: "{{ input.throttle_seconds }}"
+    submitted_since: "{{ input.submitted_since }}"
+    submitted_until: "{{ input.submitted_until }}"
     dry_run: "{{ input.dry_run | default(false) }}"
     source_id: null
     run_id: null

@@ -9,24 +9,114 @@ import math
 import os
 import re
 import sqlite3
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 from zoneinfo import ZoneInfo
 
-from flatagents import LoggingHooks, get_logger, setup_logging
+import litellm
+litellm.drop_params = True
+
+from flatmachines import LoggingHooks
+from flatagents import get_logger, setup_logging
 
 DEFAULT_LOG_DIR = Path(__file__).parent.parent.parent / "logs"
 
-if "FLATAGENTS_LOG_DIR" not in os.environ:
-    os.environ["FLATAGENTS_LOG_DIR"] = str(DEFAULT_LOG_DIR)
 if "FLATAGENTS_LOG_LEVEL" not in os.environ:
     os.environ["FLATAGENTS_LOG_LEVEL"] = "INFO"
 if "FLATAGENTS_LOG_FORMAT" not in os.environ:
     os.environ["FLATAGENTS_LOG_FORMAT"] = "standard"
 
-setup_logging(force=True)
+# Use FLATAGENTS_LOG_DIR as our default log dir if set, but don't pop it —
+# let the library create its baseline file handler.  configure_log_file()
+# (called from on_machine_start) will replace it with our custom-named one.
+_env_log_dir = os.environ.get("FLATAGENTS_LOG_DIR")
+if _env_log_dir:
+    DEFAULT_LOG_DIR = Path(_env_log_dir)
+
+# Configure library loggers (each uses its own namespace now).
+setup_logging()
 logger = get_logger(__name__)
+
+# Set up a root-level handler for our own app loggers (research_paper_analysis.*).
+# The libraries no longer touch the root logger — that's our responsibility.
+_root = logging.getLogger()
+if not _root.handlers:
+    _fmt = os.environ.get("FLATAGENTS_LOG_FORMAT", "standard")
+    if _fmt == "standard":
+        _formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    elif _fmt == "simple":
+        _formatter = logging.Formatter("%(levelname)s - %(message)s")
+    else:
+        _formatter = logging.Formatter(_fmt, datefmt="%Y-%m-%d %H:%M:%S")
+    _sh = logging.StreamHandler(sys.stdout)
+    _sh.setFormatter(_formatter)
+    _root.addHandler(_sh)
+    _root.setLevel(logging.INFO)
+
+
+def configure_log_file(
+    arxiv_id: str = "unknown",
+    log_dir: Optional[Path] = None,
+) -> Path:
+    """Add a file handler with name: {date}_{time}_{arxiv_id}_{pid}.log.
+
+    Safe to call multiple times — removes any previous file handler we added
+    so the worker can upgrade its log name after claiming a paper.
+
+    Returns the resolved log file path.
+    """
+    log_dir = log_dir or DEFAULT_LOG_DIR
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    now = datetime.now()
+    date_str = now.strftime("%Y%m%d")
+    time_str = now.strftime("%H%M%S")
+    safe_id = arxiv_id.replace("/", "_")
+    pid = os.getpid()
+    log_file = log_dir / f"{date_str}_{time_str}_{safe_id}_{pid}.log"
+
+    fmt = os.environ.get("FLATAGENTS_LOG_FORMAT", "standard")
+    if fmt == "standard":
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    elif fmt == "simple":
+        formatter = logging.Formatter(
+            "%(levelname)s - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    else:
+        formatter = logging.Formatter(fmt, datefmt="%Y-%m-%d %H:%M:%S")
+
+    # All three loggers: root (app), flatagents, flatmachines
+    all_loggers = [
+        logging.getLogger(),
+        logging.getLogger("flatagents"),
+        logging.getLogger("flatmachines"),
+    ]
+
+    # Remove any existing file handlers from all loggers
+    for lgr in all_loggers:
+        for h in list(lgr.handlers):
+            if isinstance(h, logging.FileHandler):
+                lgr.removeHandler(h)
+                h.close()
+
+    # Add our file handler to all loggers so everything goes to one file
+    fh = logging.FileHandler(str(log_file), mode="a", encoding="utf-8")
+    fh.setFormatter(formatter)
+    fh._rpa_log_file = True  # tag so we can find it later
+    for lgr in all_loggers:
+        lgr.addHandler(fh)
+
+    logger.info(f"Logging to file: {log_file}")
+    return log_file
 
 DEFAULT_DB_PATH = str(
     Path(__file__).parent.parent.parent.parent.parent
@@ -82,6 +172,17 @@ class JsonValidationHooks(LoggingHooks):
         self._conn: Optional[sqlite3.Connection] = None
         self._lock = asyncio.Lock()
         self._db_path = os.environ.get("ARXIV_DB_PATH", DEFAULT_DB_PATH)
+
+    def on_machine_start(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        context = super().on_machine_start(context)
+        arxiv_id = str(
+            context.get("paper_id")
+            or context.get("arxiv_id")
+            or context.get("worker_id")
+            or "unknown"
+        )
+        configure_log_file(arxiv_id=arxiv_id)
+        return context
 
     def _get_db_path(self) -> Optional[str]:
         return getattr(self, "db_path", None) or self._db_path
@@ -209,7 +310,14 @@ class JsonValidationHooks(LoggingHooks):
         error: Exception,
         context: Dict[str, Any]
     ) -> Optional[str]:
+        worker = context.get("worker_id", "-")
+        arxiv = context.get("paper_id") or context.get("arxiv_id", "-")
+        err_short = str(error)[:150].replace("\n", " ")
         status_code = self._extract_status_code(error)
+        logger.error(
+            "ERROR %s | worker=%s | arxiv=%s | %s | status_code=%s | %s",
+            state_name, worker, arxiv, type(error).__name__, status_code, err_short,
+        )
         headers = self._extract_headers(error)
         self._record_llm_error(
             context,
@@ -244,6 +352,11 @@ class JsonValidationHooks(LoggingHooks):
     def on_transition(self, from_state: str, to_state: str, context: Dict[str, Any]) -> str:
         agent_states = set(context.get("rate_limit_agent_states") or [])
 
+        # Check for rate limit redirect from on_state_exit (structured agent error)
+        redirect = context.pop("_rate_limit_redirect", None)
+        if redirect:
+            return super().on_transition(from_state, redirect, context)
+
         if from_state == "rate_limit_gate" and to_state == "rate_limit_resume":
             next_state = context.pop("_rate_limit_next_state", None)
             if next_state:
@@ -263,6 +376,16 @@ class JsonValidationHooks(LoggingHooks):
         output: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
         output = super().on_state_exit(state_name, context, output)
+        
+        # --- Concise per-state telemetry line ---
+        self._log_state_summary(state_name, context, output)
+        
+        # Check for structured agent errors (from AgentResult.error)
+        redirect = self._handle_agent_result_error(state_name, context, output)
+        if redirect:
+            # Store redirect for on_transition to handle
+            context["_rate_limit_redirect"] = redirect
+        
         self._capture_output_error(state_name, context, output)
 
         if state_name in self._VALIDATION_STATES:
@@ -295,6 +418,190 @@ class JsonValidationHooks(LoggingHooks):
                 self._clear_fix_flags(context)
 
         return output
+
+    # ---- concise telemetry ------------------------------------------------
+
+    @staticmethod
+    def _log_state_summary(
+        state_name: str,
+        context: Dict[str, Any],
+        output: Optional[Dict[str, Any]],
+    ) -> None:
+        """Emit a single INFO line per state exit:
+
+        STATE state | worker=w | arxiv=id | status=ok/error | keys=a,b,c | error=…
+        """
+        worker = context.get("worker_id", "-")
+        arxiv = context.get("paper_id") or context.get("arxiv_id", "-")
+
+        # Determine status
+        last_err = context.get("last_error")
+        has_output = bool(output and isinstance(output, dict) and output)
+        if last_err:
+            status = "error"
+        elif has_output:
+            status = "ok"
+        else:
+            status = "empty"
+
+        parts = [
+            f"STATE {state_name}",
+            f"worker={worker}",
+            f"arxiv={arxiv}",
+            f"status={status}",
+        ]
+
+        if has_output:
+            keys = ",".join(sorted(output.keys())[:8])
+            preview_len = sum(len(str(v)) for v in output.values())
+            parts.append(f"keys={keys}")
+            parts.append(f"size={preview_len}")
+
+        if last_err:
+            # Truncate long error messages
+            err_short = str(last_err)[:120].replace("\n", " ")
+            parts.append(f"error={err_short}")
+
+        logger.info(" | ".join(parts))
+
+    # -----------------------------------------------------------------------
+
+    def _handle_agent_result_error(
+        self,
+        state_name: str,
+        context: Dict[str, Any],
+        output: Optional[Dict[str, Any]],
+    ) -> Optional[str]:
+        """
+        Handle structured errors from AgentResult.
+        
+        Returns state name to redirect to, or None to continue normally.
+        """
+        if not output or not isinstance(output, dict):
+            return None
+        
+        # Check for AgentResult.error structure
+        error = output.get("error")
+        if not error or not isinstance(error, dict):
+            return None
+        
+        error_code = error.get("code", "")
+        error_type = error.get("type", "")
+        error_message = error.get("message", "")
+        status_code = error.get("status_code")
+        
+        # Record the error
+        self._record_llm_error(
+            context,
+            error_text=error_message,
+            error_type=error_type,
+            status_code=status_code,
+            headers=self._get_raw_headers_from_output(output),
+            source=state_name,
+        )
+        
+        # Check for rate limit
+        if error_code != "rate_limit" and status_code != 429:
+            return None
+        
+        # Detect rate limit cause from AgentResult.rate_limit
+        rate_limit = output.get("rate_limit")
+        cause, retry_after = self._detect_rate_limit_from_result(rate_limit, output)
+        
+        if not cause:
+            cause = "minute"  # Default if we can't determine
+        
+        now = datetime.now(timezone.utc)
+        until = self._compute_rate_limit_until(cause, now, retry_after)
+        
+        # Store state synchronously (will be awaited in gate)
+        asyncio.create_task(self._store_rate_limit_state(context, cause, until))
+        
+        context["rate_limit_cause"] = cause
+        context["rate_limit_until"] = until.isoformat()
+        context["_rate_limit_next_state"] = state_name
+        
+        logger.warning(
+            "Rate limit (%s) hit in %s; holding until %s",
+            cause,
+            state_name,
+            until.isoformat(),
+        )
+        return "rate_limit_gate"
+    
+    def _detect_rate_limit_from_result(
+        self,
+        rate_limit: Optional[Dict[str, Any]],
+        output: Dict[str, Any],
+    ) -> Tuple[Optional[str], Optional[int]]:
+        """
+        Detect rate limit cause and retry_after from AgentResult.rate_limit.
+        
+        Returns (cause, retry_after) tuple.
+        """
+        if not rate_limit:
+            # Fall back to raw headers
+            raw_headers = self._get_raw_headers_from_output(output)
+            if raw_headers:
+                return self._detect_rate_limit_from_headers(raw_headers)
+            return None, None
+        
+        retry_after = rate_limit.get("retry_after")
+        
+        # Check windows for exhausted limits
+        windows = rate_limit.get("windows") or []
+        for window in windows:
+            if window.get("remaining") == 0:
+                name = window.get("name", "")
+                # Map window name to cause
+                if "day" in name:
+                    return "day", retry_after
+                elif "hour" in name:
+                    return "hour", retry_after
+                else:
+                    return "minute", retry_after
+        
+        # If limited but no exhausted window found, use retry_after to guess
+        if rate_limit.get("limited"):
+            if retry_after and retry_after >= 3600:
+                return "hour", retry_after
+            return "minute", retry_after
+        
+        return None, retry_after
+    
+    def _detect_rate_limit_from_headers(
+        self,
+        headers: Dict[str, str],
+    ) -> Tuple[Optional[str], Optional[int]]:
+        """Detect rate limit from raw headers (fallback)."""
+        retry_after = self._parse_retry_after(headers.get("retry-after"))
+        
+        def header_zero(key: str) -> bool:
+            return headers.get(key) == "0"
+        
+        if header_zero("x-ratelimit-remaining-tokens-day") or header_zero(
+            "x-ratelimit-remaining-requests-day"
+        ):
+            return "day", retry_after
+        if header_zero("x-ratelimit-remaining-tokens-hour") or header_zero(
+            "x-ratelimit-remaining-requests-hour"
+        ):
+            return "hour", retry_after
+        if header_zero("x-ratelimit-remaining-tokens-minute") or header_zero(
+            "x-ratelimit-remaining-requests-minute"
+        ):
+            return "minute", retry_after
+        
+        return None, retry_after
+    
+    def _get_raw_headers_from_output(self, output: Dict[str, Any]) -> Dict[str, str]:
+        """Extract raw_headers from AgentResult.provider_data."""
+        provider_data = output.get("provider_data")
+        if provider_data and isinstance(provider_data, dict):
+            raw_headers = provider_data.get("raw_headers")
+            if raw_headers and isinstance(raw_headers, dict):
+                return raw_headers
+        return {}
 
     def on_machine_end(self, context: Dict[str, Any], final_output: Dict[str, Any]) -> Dict[str, Any]:
         final_output = super().on_machine_end(context, final_output)

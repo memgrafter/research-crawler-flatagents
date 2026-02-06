@@ -26,8 +26,9 @@ from typing import List, Optional
 import httpx
 from pypdf import PdfReader
 
-from flatagents import FlatMachine, setup_logging, get_logger
-from research_paper_analysis.hooks import JsonValidationHooks
+from flatmachines import FlatMachine
+from flatagents import setup_logging, get_logger
+from research_paper_analysis.hooks import JsonValidationHooks, configure_log_file
 
 setup_logging(level='INFO')
 logger = get_logger(__name__)
@@ -330,6 +331,7 @@ async def run(resume_id: str = None, arxiv_input: Optional[str] = None):
     """
     # Step 1: Ensure paper is downloaded
     source = resolve_paper_source(arxiv_input)
+    configure_log_file(arxiv_id=source.arxiv_id or "unknown")
     pdf_path = ensure_paper_downloaded(source)
     
     # Step 2: Extract text (programmatic, fast)

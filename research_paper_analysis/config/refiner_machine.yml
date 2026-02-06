@@ -15,15 +15,15 @@ data:
 
   context:
     # Input from parent
-    title: "{{ input.title }}"
-    authors: "{{ input.authors }}"
-    key_findings: "{{ input.key_findings }}"
-    methodology: "{{ input.methodology }}"
-    contributions: "{{ input.contributions }}"
-    technical_details: "{{ input.technical_details }}"
-    results: "{{ input.results }}"
-    reference_count: "{{ input.reference_count }}"
-    worker_id: "{{ input.worker_id }}"
+    title: input.title
+    authors: input.authors
+    key_findings: input.key_findings
+    methodology: input.methodology
+    contributions: input.contributions
+    technical_details: input.technical_details
+    results: input.results
+    reference_count: input.reference_count
+    worker_id: input.worker_id
     rate_limit_agent_states:
       - synthesize
       - extract_summary
@@ -68,19 +68,19 @@ data:
         type: retry
         backoffs: [2, 8]
       input:
-        title: "{{ context.title }}"
-        authors: "{{ context.authors }}"
-        key_findings: "{{ context.key_findings }}"
-        methodology: "{{ context.methodology }}"
-        contributions: "{{ context.contributions }}"
-        technical_details: "{{ context.technical_details }}"
-        results: "{{ context.results }}"
-        reference_count: "{{ context.reference_count }}"
-        previous_summary: "{{ context.summary }}"
-        critique: "{{ context.critique }}"
-        iteration: "{{ context.iteration }}"
+        title: context.title
+        authors: context.authors
+        key_findings: context.key_findings
+        methodology: context.methodology
+        contributions: context.contributions
+        technical_details: context.technical_details
+        results: context.results
+        reference_count: context.reference_count
+        previous_summary: context.summary
+        critique: context.critique
+        iteration: context.iteration
       output_to_context:
-        raw_summary: "{{ output.content }}"
+        raw_summary: output.content
         iteration: "{{ context.iteration + 1 }}"
       transitions:
         - to: extract_summary
@@ -92,9 +92,9 @@ data:
         backoffs: [2, 8, 16, 35]
         jitter: 0.1
       input:
-        text: "{{ context.raw_summary }}"
+        text: context.raw_summary
       output_to_context:
-        summary: "{{ output.summary }}"
+        summary: output.summary
       transitions:
         - condition: "context.json_fix_required == true"
           to: fix_summary
@@ -107,11 +107,11 @@ data:
         backoffs: [2, 8, 16, 35]
         jitter: 0.1
       input:
-        text: "{{ context.json_fix_source }}"
-        invalid_json: "{{ context.json_fix_raw }}"
-        error: "{{ context.json_fix_error }}"
+        text: context.json_fix_source
+        invalid_json: context.json_fix_raw
+        error: context.json_fix_error
       output_to_context:
-        summary: "{{ output.summary }}"
+        summary: output.summary
       transitions:
         - condition: "context.json_fix_failed == true"
           to: json_failure
@@ -124,12 +124,12 @@ data:
         type: retry
         backoffs: [2, 8]
       input:
-        title: "{{ context.title }}"
-        summary: "{{ context.summary }}"
-        key_findings: "{{ context.key_findings }}"
-        methodology: "{{ context.methodology }}"
+        title: context.title
+        summary: context.summary
+        key_findings: context.key_findings
+        methodology: context.methodology
       output_to_context:
-        raw_critique: "{{ output.content }}"
+        raw_critique: output.content
       transitions:
         - to: extract_critique
 
@@ -140,10 +140,10 @@ data:
         backoffs: [2, 8, 16, 35]
         jitter: 0.1
       input:
-        text: "{{ context.raw_critique }}"
+        text: context.raw_critique
       output_to_context:
-        quality_score: "{{ output.quality_score | int }}"
-        critique: "{{ output.critique }}"
+        quality_score: output.quality_score
+        critique: output.critique
       transitions:
         - condition: "context.json_fix_required == true"
           to: fix_critique
@@ -160,12 +160,12 @@ data:
         backoffs: [2, 8, 16, 35]
         jitter: 0.1
       input:
-        text: "{{ context.json_fix_source }}"
-        invalid_json: "{{ context.json_fix_raw }}"
-        error: "{{ context.json_fix_error }}"
+        text: context.json_fix_source
+        invalid_json: context.json_fix_raw
+        error: context.json_fix_error
       output_to_context:
-        quality_score: "{{ output.quality_score | int }}"
-        critique: "{{ output.critique }}"
+        quality_score: output.quality_score
+        critique: output.critique
       transitions:
         - condition: "context.json_fix_failed == true"
           to: json_failure
@@ -187,16 +187,16 @@ data:
     done:
       type: final
       output:
-        summary: "{{ context.summary }}"
-        quality_score: "{{ context.quality_score }}"
-        iterations: "{{ context.iteration }}"
+        summary: context.summary
+        quality_score: context.quality_score
+        iterations: context.iteration
 
     json_failure:
       type: final
       output:
         error: "Invalid JSON from {{ context.json_fix_state }}"
-        json_error: "{{ context.json_fix_error }}"
-        json_invalid: "{{ context.json_fix_raw }}"
+        json_error: context.json_fix_error
+        json_invalid: context.json_fix_raw
 
 metadata:
   description: "Self-judging refinement loop for summary quality"

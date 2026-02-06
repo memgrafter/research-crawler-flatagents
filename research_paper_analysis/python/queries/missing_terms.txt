@@ -1,0 +1,31 @@
+# Missing Terms
+Emergent Abilities
+Constitutional AI (CAI)
+Speculative Decoding
+Flash Attention
+Activation Checkpointing
+Gradient Accumulation
+Model Merging
+Preference Learning
+Red Teaming
+Jailbreaking
+Hallucination
+Sycophancy
+Value Loading
+Sandbagging
+Overoptimization
+Positional Encoding
+Key-Value Cache (KV Cache)
+Context Window
+Synthetic Data
+Data Contamination
+Capability Elicitation
+Safety Tax
+Activation Steering
+Circuit Analysis
+Superposition
+Sparse Autoencoders (SAE)
+World Model
+Tool Use
+Function Calling
+Grounding

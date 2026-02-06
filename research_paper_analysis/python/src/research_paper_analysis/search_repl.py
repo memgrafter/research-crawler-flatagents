@@ -11,8 +11,6 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from flatagents import FlatAgent, setup_logging, get_logger
 
-from research_paper_analysis.main import run as analyze_paper
-
 setup_logging(level="INFO")
 logger = get_logger(__name__)
 
@@ -40,6 +38,37 @@ def _default_db_path() -> Path:
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _normalize_query_term(term: str) -> str:
+    normalized = re.sub(r"[-_/]+", " ", term.strip())
+    normalized = re.sub(r"\s+", " ", normalized)
+    return normalized.strip()
+
+
+def _load_query_terms(path: Path) -> List[str]:
+    terms: List[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        normalized = _normalize_query_term(stripped)
+        if normalized:
+            terms.append(normalized)
+    return terms
+
+
+def _build_query_from_terms(terms: Iterable[str]) -> str:
+    pieces: List[str] = []
+    for term in terms:
+        if not term:
+            continue
+        escaped = term.replace('"', '""')
+        if re.search(r"\s", escaped):
+            pieces.append(f'"{escaped}"')
+        else:
+            pieces.append(escaped)
+    return " OR ".join(pieces)
 
 
 def _ensure_schema(conn: sqlite3.Connection) -> None:
@@ -187,13 +216,68 @@ def _ensure_fts_ready(conn: sqlite3.Connection, force_rebuild: bool) -> bool:
     return False
 
 
+def _order_by_clause(order_by: str) -> str:
+    if order_by == "impact":
+        return (
+            "COALESCE(pr.fmr_score, 0) DESC, "
+            "(aa.max_h_index IS NULL) ASC, "
+            "aa.max_h_index DESC, "
+            "COALESCE(pc.cited_by_count, 0) DESC, "
+            "bm25(papers_fts) ASC"
+        )
+    if order_by == "hybrid":
+        return (
+            "bm25(papers_fts) ASC, "
+            "COALESCE(pr.fmr_score, 0) DESC, "
+            "(aa.max_h_index IS NULL) ASC, "
+            "aa.max_h_index DESC, "
+            "COALESCE(pc.cited_by_count, 0) DESC"
+        )
+    return "bm25(papers_fts) ASC"
+
+
+def _count_candidates(
+    conn: sqlite3.Connection,
+    query: str,
+    only_llm_relevant: bool,
+) -> int:
+    llm_clause = "AND p.llm_relevant = 1" if only_llm_relevant else ""
+    query_sql = """
+        WITH latest_versions AS (
+            SELECT arxiv_id, MAX(version) AS max_version
+            FROM papers
+            GROUP BY arxiv_id
+        )
+        SELECT COUNT(*)
+        FROM papers_fts
+        JOIN papers p ON p.id = papers_fts.rowid
+        JOIN latest_versions lv
+          ON lv.arxiv_id = p.arxiv_id
+         AND lv.max_version = p.version
+        WHERE p.disable_summary = 0
+          {llm_clause}
+          AND papers_fts MATCH ?
+          AND NOT EXISTS (
+            SELECT 1
+            FROM paper_queue pq
+            WHERE pq.paper_id = p.id
+              AND pq.summary_path IS NOT NULL
+              AND pq.summary_path != ''
+          )
+    """
+    row = conn.execute(query_sql.format(llm_clause=llm_clause), (query,)).fetchone()
+    return int(row[0] or 0)
+
+
 def _search_candidates(
     conn: sqlite3.Connection,
     query: str,
     limit: int,
     only_llm_relevant: bool,
+    order_by: str,
 ) -> List[Candidate]:
     llm_clause = "AND p.llm_relevant = 1" if only_llm_relevant else ""
+    order_clause = _order_by_clause(order_by)
     query_sql = """
         WITH latest_versions AS (
             SELECT arxiv_id, MAX(version) AS max_version
@@ -236,10 +320,13 @@ def _search_candidates(
               AND pq.summary_path IS NOT NULL
               AND pq.summary_path != ''
           )
-        ORDER BY bm25(papers_fts) ASC
+        ORDER BY {order_clause}
         LIMIT ?
     """
-    rows = conn.execute(query_sql.format(llm_clause=llm_clause), (query, limit)).fetchall()
+    rows = conn.execute(
+        query_sql.format(llm_clause=llm_clause, order_clause=order_clause),
+        (query, limit),
+    ).fetchall()
     candidates: List[Candidate] = []
     for idx, row in enumerate(rows, start=1):
         candidates.append(
@@ -529,12 +616,8 @@ async def _summarize_actions(
     conn: sqlite3.Connection,
     candidates_by_index: Dict[int, Candidate],
     actions: List[Dict[str, Any]],
-    max_workers: int = 2,
-    queue_only: bool = False,
 ) -> None:
-    """Push papers to work queue and optionally spawn distributed workers."""
-    from flatagents import FlatMachine
-
+    """Queue papers for downstream processing (DB-only)."""
     to_summarize = [a for a in actions if a["action"] == "summarize"]
     if not to_summarize:
         print("No papers to summarize.")
@@ -558,94 +641,17 @@ async def _summarize_actions(
     conn.commit()
     print(f"   ✅ Queued {len(to_summarize)} papers.")
 
-    if queue_only:
-        print("\n⏭️  Queue-only mode: skipping worker spawn.")
-        return
-
-    config_dir = _repo_root() / "research_paper_analysis" / "config"
-    checker_config = config_dir / "parallelization_checker.yml"
-
-    if not checker_config.exists():
-        print(f"   ⚠️  Parallelization checker not found at {checker_config}")
-        print("   Falling back to serial processing...")
-        await _summarize_inline(conn, candidates_by_index, actions)
-        return
-
-    print(f"\n🚀 Spawning up to {max_workers} worker(s)...")
-    machine = FlatMachine(config_file=str(checker_config))
-    result = await machine.execute(input={"max_workers": max_workers})
-
-    spawned = result.get("spawned_count", result.get("spawned", 0))
-    queue_depth = result.get("queue_depth", len(to_summarize))
-    active_workers = result.get("active_workers", 0)
-
-    print(f"   ✅ Spawned {spawned} worker(s).")
-    print(f"   📊 Queue depth: {queue_depth}, Active workers: {active_workers + spawned}")
-    print("\n💡 Workers are processing in parallel. Run 'run_checker.py' again to spawn more if needed.")
-
-
-async def _summarize_inline(
-    conn: sqlite3.Connection,
-    candidates_by_index: Dict[int, Candidate],
-    actions: List[Dict[str, Any]],
-) -> None:
-    """Fallback: process papers serially inline (original behavior)."""
-    to_summarize = [a for a in actions if a["action"] == "summarize"]
-    to_summarize.sort(key=lambda item: item.get("priority", 0))
-
-    for action in to_summarize:
-        candidate = candidates_by_index[action["index"]]
-        priority = int(action.get("priority") or 0)
-        _ensure_queue_row(conn, candidate.paper_id, priority)
-
-        started_at = _utc_now_iso()
-        conn.execute(
-            """
-            UPDATE paper_queue
-            SET status = ?, started_at = ?, worker = ?, priority = ?
-            WHERE paper_id = ?
-            """,
-            ("processing", started_at, "summarizer", priority, candidate.paper_id),
-        )
-        conn.commit()
-
-        try:
-            result = await analyze_paper(arxiv_input=candidate.arxiv_id)
-            report_path = ""
-            if isinstance(result, dict):
-                report_path = result.get("report_path") or ""
-            finished_at = _utc_now_iso()
-            conn.execute(
-                """
-                UPDATE paper_queue
-                SET status = ?, finished_at = ?, summary_path = ?, error = NULL
-                WHERE paper_id = ?
-                """,
-                ("done", finished_at, report_path, candidate.paper_id),
-            )
-            conn.commit()
-        except Exception as exc:
-            finished_at = _utc_now_iso()
-            conn.execute(
-                """
-                UPDATE paper_queue
-                SET status = ?, finished_at = ?, error = ?
-                WHERE paper_id = ?
-                """,
-                ("error", finished_at, str(exc), candidate.paper_id),
-            )
-            conn.commit()
-            logger.exception("Summarization failed for %s", candidate.arxiv_id)
-
 
 async def run_repl(
     db_path: Path,
     limit: int,
     query: Optional[str],
+    query_file: Optional[Path],
     rebuild_fts: bool,
     only_llm_relevant: bool,
-    max_workers: int,
-    queue_only: bool = False,
+    order_by: str,
+    auto_summarize: bool,
+    show_count: bool,
 ) -> None:
     if not db_path.exists():
         raise FileNotFoundError(f"Database not found: {db_path}")
@@ -660,6 +666,18 @@ async def run_repl(
         print(f"FTS index ready (rows: {fts_count}).")
 
     query = (query or "").strip()
+    if query_file:
+        if not query_file.exists():
+            raise FileNotFoundError(f"Query file not found: {query_file}")
+        terms = _load_query_terms(query_file)
+        if not terms:
+            raise ValueError(f"No query terms found in {query_file}")
+        file_query = _build_query_from_terms(terms)
+        if query:
+            query = f"({file_query}) AND ({query})"
+        else:
+            query = file_query
+        print(f"Loaded {len(terms)} query term(s) from {query_file}")
     if not query:
         query = input("Search query: ").strip()
     if not query:
@@ -668,7 +686,10 @@ async def run_repl(
         return
 
     try:
-        candidates = _search_candidates(conn, query, limit, only_llm_relevant)
+        if show_count:
+            total_matches = _count_candidates(conn, query, only_llm_relevant)
+            print(f"Total matches: {total_matches}")
+        candidates = _search_candidates(conn, query, limit, only_llm_relevant, order_by)
     except sqlite3.OperationalError as exc:
         conn.close()
         raise RuntimeError(f"Search failed. Check FTS query syntax: {exc}") from exc
@@ -679,7 +700,10 @@ async def run_repl(
             _rebuild_fts(conn)
             fts_count = _fts_row_count(conn)
             print(f"FTS index ready (rows: {fts_count}).")
-            candidates = _search_candidates(conn, query, limit, only_llm_relevant)
+            if show_count:
+                total_matches = _count_candidates(conn, query, only_llm_relevant)
+                print(f"Total matches: {total_matches}")
+            candidates = _search_candidates(conn, query, limit, only_llm_relevant, order_by)
         if not candidates:
             _debug_fts_state(conn, query)
             print("No matching papers found.")
@@ -689,6 +713,29 @@ async def run_repl(
     print("\n=== Search Results ===\n")
     print(f"Query: {query}\n")
     print(_format_candidates(candidates))
+
+    if auto_summarize:
+        batch_id = _batch_id()
+        normalized_actions = [
+            {
+                "index": c.index,
+                "arxiv_id": c.arxiv_id,
+                "title": c.title,
+                "action": "summarize",
+                "priority": rank,
+            }
+            for rank, c in enumerate(candidates, start=1)
+        ]
+        print(f"\nAuto-summarize enabled: queueing {len(normalized_actions)} paper(s).")
+        candidates_by_index = {c.index: c for c in candidates}
+        await _summarize_actions(
+            conn,
+            candidates_by_index,
+            normalized_actions,
+        )
+        conn.close()
+        return
+
     print("\nEnter your instructions. Unmentioned papers default to pass.")
     print("Use phrases like: 'do them all', 'do all except ...', or 'do not summarize ...'.\n")
 
@@ -773,8 +820,6 @@ async def run_repl(
         conn,
         candidates_by_index,
         normalized_actions,
-        max_workers=max_workers,
-        queue_only=queue_only,
     )
     conn.close()
 
@@ -799,6 +844,27 @@ def main() -> None:
         help="FTS5 search query (prompted if omitted)",
     )
     parser.add_argument(
+        "--query-file",
+        default=None,
+        help="Path to a newline-delimited query term file (combined with OR)",
+    )
+    parser.add_argument(
+        "--order-by",
+        default="bm25",
+        choices=["bm25", "impact", "hybrid"],
+        help="Sort order for results (bm25, impact, hybrid)",
+    )
+    parser.add_argument(
+        "--auto-summarize",
+        action="store_true",
+        help="Queue all matches without prompts",
+    )
+    parser.add_argument(
+        "--show-count",
+        action="store_true",
+        help="Print total match count (can be slow on large DBs)",
+    )
+    parser.add_argument(
         "--rebuild-fts",
         action="store_true",
         help="Force a rebuild of the FTS index before searching",
@@ -808,30 +874,21 @@ def main() -> None:
         action="store_true",
         help="Restrict results to papers where llm_relevant = 1",
     )
-    parser.add_argument(
-        "--workers",
-        "-w",
-        type=int,
-        default=2,
-        help="Maximum parallel workers to spawn (default: 2)",
-    )
-    parser.add_argument(
-        "--queue-only",
-        action="store_true",
-        help="Queue selected papers without running summarization",
-    )
     args = parser.parse_args()
 
     db_path = Path(args.db_path) if args.db_path else _default_db_path()
+    query_file = Path(args.query_file) if args.query_file else None
     asyncio.run(
         run_repl(
             db_path,
             args.limit,
             args.query,
+            query_file,
             args.rebuild_fts,
             args.llm_relevant_only,
-            args.workers,
-            args.queue_only,
+            args.order_by,
+            args.auto_summarize,
+            args.show_count,
         )
     )
 

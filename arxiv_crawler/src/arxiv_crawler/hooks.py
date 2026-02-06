@@ -87,16 +87,21 @@ def build_search_query(
     categories: List[str],
     since_dt: Optional[datetime],
     until_dt: Optional[datetime],
+    submitted_since_dt: Optional[datetime] = None,
+    submitted_until_dt: Optional[datetime] = None,
 ) -> str:
     """Build arXiv API search query.
 
     Note: We intentionally do NOT include lastUpdatedDate range in the query
     because arXiv's API returns 500 errors with date range syntax. Instead,
-    date filtering is handled client-side in _fetch_arxiv using since_dt/until_dt.
+    updated date filtering is handled client-side in _fetch_arxiv using since_dt/until_dt.
     """
     cat_query = " OR ".join(f"cat:{cat}" for cat in categories)
     base_query = f"({cat_query})" if cat_query else "all:*"
-    # Date filtering is handled client-side in _fetch_arxiv, not here
+    if submitted_since_dt or submitted_until_dt:
+        start = format_arxiv_date(submitted_since_dt)
+        end = format_arxiv_date(submitted_until_dt)
+        base_query = f"{base_query} AND submittedDate:[{start} TO {end}]"
     return base_query
 
 
@@ -233,7 +238,9 @@ class CrawlerHooks(MachineHooks):
         conn.execute("PRAGMA foreign_keys = ON;")
 
         since = context.get("since")
-        if not since:
+        submitted_since = context.get("submitted_since")
+        submitted_until = context.get("submitted_until")
+        if not since and not submitted_since and not submitted_until:
             row = conn.execute(
                 "SELECT value FROM crawler_state WHERE key = ?",
                 ("last_updated_at",),
@@ -244,11 +251,15 @@ class CrawlerHooks(MachineHooks):
         categories = parse_categories(context.get("categories")) or list(LLM_RELEVANCE_CATEGORIES)
         since_dt = parse_iso_datetime(since)
         until_dt = parse_iso_datetime(context.get("until"))
-        query = build_search_query(categories, since_dt, until_dt)
+        submitted_since_dt = parse_iso_datetime(submitted_since)
+        submitted_until_dt = parse_iso_datetime(submitted_until)
+        query = build_search_query(categories, since_dt, until_dt, submitted_since_dt, submitted_until_dt)
 
         conn.close()
 
         context["since"] = since
+        context["submitted_since"] = submitted_since
+        context["submitted_until"] = submitted_until
         context["query"] = query
         return context
 
@@ -261,29 +272,50 @@ class CrawlerHooks(MachineHooks):
 
         since_dt = parse_iso_datetime(context.get("since"))
         until_dt = parse_iso_datetime(context.get("until"))
+        submitted_since = context.get("submitted_since")
+        submitted_until = context.get("submitted_until")
         query = context.get("query")
         if not query:
             categories = parse_categories(context.get("categories")) or list(LLM_RELEVANCE_CATEGORIES)
-            query = build_search_query(categories, since_dt, until_dt)
+            query = build_search_query(
+                categories,
+                since_dt,
+                until_dt,
+                parse_iso_datetime(submitted_since),
+                parse_iso_datetime(submitted_until),
+            )
         progress_every = int(context.get("progress_every") or 0)
+        throttle_seconds = context.get("throttle_seconds")
+        if throttle_seconds in (None, "", "None"):
+            throttle_seconds = None
+        else:
+            throttle_seconds = float(throttle_seconds)
+            if throttle_seconds < 0:
+                throttle_seconds = 0.0
 
         collected = []
         latest_updated = None
         start = 0
         done = False
         next_log = progress_every if progress_every > 0 else None
+        has_submitted_filter = bool(submitted_since or submitted_until)
+        sort_by = "submittedDate" if has_submitted_filter else "lastUpdatedDate"
+        sort_order = "ascending" if has_submitted_filter else "descending"
 
         self.logger.info("Fetching arXiv feed...")
         while not done and len(collected) < max_results:
             batch_size = min(ARXIV_PAGE_SIZE, max_results - len(collected))
             params = {
                 "search_query": query,
-                "sortBy": "lastUpdatedDate",
-                "sortOrder": "descending",
+                "sortBy": sort_by,
+                "sortOrder": sort_order,
                 "start": start,
                 "max_results": batch_size,
             }
-            throttle_delay = random.uniform(*THROTTLE_RANGE_SECONDS)
+            if throttle_seconds is None:
+                throttle_delay = random.uniform(*THROTTLE_RANGE_SECONDS)
+            else:
+                throttle_delay = throttle_seconds
             time.sleep(throttle_delay)
             response = self._request_with_retries(params)
             entries = parse_feed(response.text)

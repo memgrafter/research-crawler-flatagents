@@ -394,7 +394,7 @@ async def _summarize_actions(
     2. Optionally runs the parallelization checker to spawn worker processes
     3. Workers process papers in parallel
     """
-    from flatagents import FlatMachine
+    from flatmachines import FlatMachine
     
     to_summarize = [a for a in actions if a["action"] == "summarize"]
     if not to_summarize:

@@ -1,4 +1,4 @@
-#!/usr/bin/env .venv/bin/python
+#!/usr/bin/env python
 """
 Run the stale worker reaper.
 
@@ -11,6 +11,7 @@ Usage:
 
 import argparse
 import asyncio
+import logging
 import sys
 from pathlib import Path
 
@@ -18,9 +19,17 @@ from pathlib import Path
 SRC_DIR = Path(__file__).parent / "src"
 sys.path.insert(0, str(SRC_DIR))
 
-from flatagents import FlatMachine
+from flatmachines import FlatMachine
+from research_paper_analysis.hooks import configure_log_file
 
 CONFIG_DIR = Path(__file__).parent.parent / "config"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
 
 async def main():
@@ -28,20 +37,20 @@ async def main():
     parser.add_argument("--threshold", "-t", type=int, default=120, help="Stale threshold in seconds")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     args = parser.parse_args()
-    
+
+    configure_log_file(arxiv_id="reaper")
+
     config_path = CONFIG_DIR / "stale_worker_reaper.yml"
-    
-    print(f"Running stale worker reaper (threshold={args.threshold}s)")
-    
+
+    logger.info(f"Running stale worker reaper (threshold={args.threshold}s)")
+
     machine = FlatMachine(config_file=str(config_path))
-    
-    result = await machine.execute(input={
-        "stale_threshold_seconds": args.threshold,
-    })
-    
+
+    result = await machine.execute(input={})
+
     reaped = result.get("reaped_count", 0)
-    print(f"\n✅ Reaper complete! Cleaned up {reaped} stale worker(s).")
-    
+    logger.info(f"Reaper complete! Cleaned up {reaped} stale worker(s).")
+
     return result
 
 

@@ -22,12 +22,12 @@ from typing import Any, Dict, List, Optional
 import httpx
 from pypdf import PdfReader
 
-from flatagents import (
+from flatmachines import (
     DistributedWorkerHooks,
     SQLiteRegistrationBackend,
     SQLiteWorkBackend,
-    get_logger,
 )
+from flatagents import get_logger
 
 from .hooks import JsonValidationHooks
 
@@ -177,7 +177,7 @@ class DistributedPaperAnalysisHooks(JsonValidationHooks):
         Uses absolute path resolution for the worker config.
         """
         import uuid
-        from flatagents.actions import launch_machine
+        from flatmachines.actions import launch_machine
         
         workers_to_spawn = int(context.get("workers_to_spawn", 0))
         
@@ -192,6 +192,23 @@ class DistributedPaperAnalysisHooks(JsonValidationHooks):
         spawned_ids = []
         for i in range(workers_to_spawn):
             worker_id = f"paper-worker-{uuid.uuid4().hex[:8]}"
+            
+            # Pre-register worker so get_pool_state sees it immediately,
+            # closing the race window between spawn and register_worker.
+            # The worker's own register_worker does INSERT OR REPLACE,
+            # so this is safe — it just updates with real PID/host.
+            async with self._lock:
+                conn = self._get_conn()
+                now = datetime.now(timezone.utc).isoformat()
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO worker_registry
+                    (worker_id, status, last_heartbeat, started_at)
+                    VALUES (?, 'active', ?, ?)
+                    """,
+                    (worker_id, now, now),
+                )
+                conn.commit()
             
             # Launch worker in subprocess
             launch_machine(
@@ -410,9 +427,13 @@ class DistributedPaperAnalysisHooks(JsonValidationHooks):
             if value and value not in parts:
                 parts.append(value)
 
-        raw_error = context.get("error")
+        # flatmachines stores exceptions in last_error/last_error_type
+        raw_error = context.get("error") or context.get("last_error")
         if raw_error:
             add_part(str(raw_error))
+        last_error_type = context.get("last_error_type")
+        if last_error_type:
+            add_part(f"error_type={last_error_type}")
 
         analysis_result = context.get("analysis_result") or {}
         if not isinstance(analysis_result, dict):
@@ -492,10 +513,9 @@ class DistributedPaperAnalysisHooks(JsonValidationHooks):
     async def _fail_paper(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Mark paper as failed. Will retry or poison based on attempts."""
         queue_id = context.get("queue_id")
-        error = context.get("error")
         error_details = self._collect_error_details(context)
-        if not error_details and error:
-            error_details = str(error)
+        if not error_details:
+            error_details = str(context.get("error") or context.get("last_error") or "unknown error")
         retryable_failure = self._is_retryable_failure(error_details, context)
         
         if not queue_id:

@@ -19,7 +19,8 @@ from pathlib import Path
 SRC_DIR = Path(__file__).parent / "src"
 sys.path.insert(0, str(SRC_DIR))
 
-from flatagents import FlatMachine
+from flatmachines import FlatMachine
+from research_paper_analysis.hooks import configure_log_file
 
 CONFIG_DIR = Path(__file__).parent.parent / "config"
 
@@ -31,6 +32,7 @@ async def main():
     args = parser.parse_args()
     
     worker_id = args.worker_id or f"worker-{uuid.uuid4().hex[:8]}"
+    configure_log_file(arxiv_id=worker_id)
     config_path = CONFIG_DIR / "paper_analysis_worker.yml"
     
     print(f"Starting worker {worker_id}")
