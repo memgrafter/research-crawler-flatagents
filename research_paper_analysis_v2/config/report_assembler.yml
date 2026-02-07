@@ -20,7 +20,7 @@ data:
     Key outcome:
     {{ input.key_outcome }}
 
-    Why it matters (hypothesis ledger):
+    Why / mechanism / onboarding analysis:
     {{ input.why_hypotheses }}
 
     Reproduction notes:
@@ -38,7 +38,9 @@ data:
     ## Executive Summary
     ## Method Summary
     ## Key Results
-    ## Why It Matters (Hypothesis Ledger)
+    ## Why This Works (Mechanism)
+    ## Foundational Learning
+    ## Architecture Onboarding
     ## Open Questions the Paper Calls Out
     ## Limitations
     ## Confidence
@@ -51,13 +53,18 @@ data:
     - Executive Summary should be 1-2 short paragraphs
     - Method Summary: concise 1-2 paragraph synthesis from reproduction notes
     - Key Results: 2-3 terse bullets from key outcome
+    - Use the why input to populate Why This Works, Foundational Learning, and Architecture Onboarding
+    - Foundational Learning should include 3-6 concepts with a short "why needed" and "quick check"
+    - Architecture Onboarding must include component map, critical path, design tradeoffs, failure signatures, and exactly 3 first experiments
+    - Represent the component map as plain text (for example: A -> B -> C), not as a fenced code block
     - Use provided open-questions content for Open Questions section
     - Limitations: 2-3 terse bullets from limits/confidence content
     - Confidence: concise claim->label mapping (High/Medium/Low), bullets or table
     - Next Checks should contain exactly 3 concrete validation checks
     - Do NOT duplicate frontmatter fields beyond normal overlap in wording
 
-    Output only the markdown report body. No markdown code fences.
+    Output only the markdown report body.
+    Absolutely do not use markdown code fences (``` ... ```).
 
 metadata:
-  description: "Assembles body markdown with method summary, key results, limitations, confidence, open questions, and next checks"
+  description: "Assembles body markdown with mechanism, foundational learning, onboarding, open questions, and validation sections"

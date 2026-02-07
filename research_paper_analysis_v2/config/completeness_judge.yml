@@ -20,7 +20,9 @@ data:
     REQUIRED HEADERS:
     - ## Method Summary
     - ## Key Results
-    - ## Why It Matters (Hypothesis Ledger)
+    - ## Why This Works (Mechanism)
+    - ## Foundational Learning
+    - ## Architecture Onboarding
     - ## Open Questions the Paper Calls Out
     - ## Limitations
     - ## Confidence
@@ -31,11 +33,14 @@ data:
 
     Decision rules:
     - PASS: all required headers exist and each section has useful non-placeholder content.
-    - REPAIR: fixable issues (missing/weak sections, placeholders, formatting issues).
+    - REPAIR: fixable issues (missing/weak sections, placeholders, markdown code fences, formatting issues).
     - FAIL: unusable output after a repair attempt or severe corruption.
 
     Placeholder guidance:
     - A section is placeholder-only if it is effectively just one fallback line.
+    - Foundational Learning must include multiple concrete concepts (not one vague paragraph).
+    - Architecture Onboarding must include component map, critical path, tradeoffs, failure signatures, and experiments.
+    - No markdown code fences are allowed anywhere in the report body.
     - Next Checks should contain concrete checklist items, not vague prose.
 
     Output exactly one token: PASS or REPAIR or FAIL.

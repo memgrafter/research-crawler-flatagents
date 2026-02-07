@@ -19,7 +19,9 @@ data:
     Required section headers to keep/add exactly:
     - ## Method Summary
     - ## Key Results
-    - ## Why It Matters (Hypothesis Ledger)
+    - ## Why This Works (Mechanism)
+    - ## Foundational Learning
+    - ## Architecture Onboarding
     - ## Open Questions the Paper Calls Out
     - ## Limitations
     - ## Confidence
@@ -30,6 +32,7 @@ data:
     - Preserve optional sections (for example: Quick Facts, Executive Summary) if present
     - Make minimal necessary edits only
     - Do not add YAML frontmatter
+    - Remove markdown code fences if present
     - For weak sections, expand with concise, cautious content derived from existing report context
     - Use line-level qualifiers like "Assumption:" or "Unknown:" when needed
     - Never replace a required section with a single placeholder sentence
