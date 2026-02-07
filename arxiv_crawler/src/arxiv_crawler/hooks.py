@@ -526,14 +526,52 @@ class CrawlerHooks(MachineHooks):
 
         now = utc_now_iso()
         for paper_id in new_ids:
+            paper_row = conn.execute(
+                "SELECT arxiv_id, version FROM papers WHERE id = ?",
+                (paper_id,),
+            ).fetchone()
+            if not paper_row:
+                continue
+
+            arxiv_id, version = paper_row
+            latest_row = conn.execute(
+                "SELECT MAX(version) FROM papers WHERE arxiv_id = ?",
+                (arxiv_id,),
+            ).fetchone()
+            latest_version = int(latest_row[0] or version)
+
+            # Only enqueue the newest revision.
+            if int(version) == latest_version:
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO paper_queue (
+                        paper_id, status, priority, enqueued_at
+                    )
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (paper_id, "pending", 0, now),
+                )
+
+            # Demote any still-pending older revisions for this arXiv id so they
+            # are not summarized after a newer revision exists.
             conn.execute(
                 """
-                INSERT OR IGNORE INTO paper_queue (
-                    paper_id, status, priority, enqueued_at
-                )
-                VALUES (?, ?, ?, ?)
+                UPDATE paper_queue
+                SET status = 'backlog',
+                    priority = 0,
+                    worker = NULL,
+                    started_at = NULL,
+                    claimed_by = NULL,
+                    claimed_at = NULL
+                WHERE status = 'pending'
+                  AND paper_id IN (
+                      SELECT id
+                      FROM papers
+                      WHERE arxiv_id = ?
+                        AND version < ?
+                  )
                 """,
-                (paper_id, "pending", 0, now),
+                (arxiv_id, latest_version),
             )
 
         conn.commit()
