@@ -8,8 +8,7 @@ data:
   system: |
     You are a technical report editor.
     Assemble a clean markdown report body only (no YAML frontmatter).
-    Keep the report readable and executive-friendly while remaining evidence-aware.
-    Prefer informative, concrete section content over generic placeholders.
+    Keep it readable, concise, and evidence-aware.
 
   user: |
     Title: {{ input.title }}
@@ -27,6 +26,9 @@ data:
     Reproduction notes:
     {{ input.reproduction_notes }}
 
+    Open questions:
+    {{ input.open_questions }}
+
     Limits/confidence/next checks:
     {{ input.limits_confidence }}
 
@@ -34,25 +36,28 @@ data:
     # {{ input.title }}
     ## Quick Facts
     ## Executive Summary
-    ## Key Outcome Snapshot
+    ## Method Summary
+    ## Key Results
     ## Why It Matters (Hypothesis Ledger)
-    ## Technical Reproduction Notes
-    ## Limits, Confidence, and Next Checks
+    ## Open Questions the Paper Calls Out
+    ## Limitations
+    ## Confidence
+    ## Next Checks
 
     Requirements:
     - Do NOT include YAML frontmatter
-    - Keep the four required v2 headings exactly:
-      - ## Key Outcome Snapshot
-      - ## Why It Matters (Hypothesis Ledger)
-      - ## Technical Reproduction Notes
-      - ## Limits, Confidence, and Next Checks
+    - Keep required headings exactly as written above
     - In Quick Facts, include concise bullets for arXiv ID, source URL, reference count, and one-line primary result
-    - Executive Summary should be 1-2 short paragraphs, readable by non-specialists
-    - If details are sparse, use cautious line-level qualifiers such as "Assumption:" or "Unknown:" instead of replacing an entire section with a placeholder sentence
-    - Do not collapse required sections to one-line fallback text
-    - Keep output concise and scannable
+    - Executive Summary should be 1-2 short paragraphs
+    - Method Summary: concise 1-2 paragraph synthesis from reproduction notes
+    - Key Results: 2-3 terse bullets from key outcome
+    - Use provided open-questions content for Open Questions section
+    - Limitations: 2-3 terse bullets from limits/confidence content
+    - Confidence: concise claim->label mapping (High/Medium/Low), bullets or table
+    - Next Checks should contain exactly 3 concrete validation checks
+    - Do NOT duplicate frontmatter fields beyond normal overlap in wording
 
     Output only the markdown report body. No markdown code fences.
 
 metadata:
-  description: "Assembles a readable report body while preserving v2 required sections"
+  description: "Assembles body markdown with method summary, key results, limitations, confidence, open questions, and next checks"

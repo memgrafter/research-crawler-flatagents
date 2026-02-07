@@ -27,6 +27,7 @@ data:
     token_target_why: "350-550"
     token_target_reproduction: "220-380"
     token_target_limits: "120-220"
+    token_target_open_questions: "120-220"
 
     # Corpus/tag context (hook actions)
     corpus_signals: null
@@ -42,6 +43,7 @@ data:
     why_hypotheses: null
     reproduction_notes: null
     limits_confidence: null
+    open_questions: null
 
     # Report assembly
     report_body: null
@@ -58,6 +60,7 @@ data:
     why_hypothesis_writer: ./why_hypothesis_writer.yml
     reproduction_writer: ./reproduction_writer.yml
     limits_confidence_writer: ./limits_confidence_writer.yml
+    open_questions_writer: ./open_questions_writer.yml
     report_assembler: ./report_assembler.yml
     completeness_judge: ./completeness_judge.yml
     targeted_repair: ./targeted_repair.yml
@@ -139,6 +142,23 @@ data:
       output_to_context:
         limits_confidence: output.content
       transitions:
+        - to: write_open_questions
+
+    write_open_questions:
+      agent: open_questions_writer
+      execution:
+        type: retry
+        backoffs: [2, 8]
+      input:
+        title: context.title
+        key_outcome: context.key_outcome
+        abstract: context.abstract
+        section_text: context.section_text
+        limits_confidence: context.limits_confidence
+        token_target: context.token_target_open_questions
+      output_to_context:
+        open_questions: output.content
+      transitions:
         - to: derive_terminology_tags
 
     derive_terminology_tags:
@@ -160,6 +180,7 @@ data:
         key_outcome: context.key_outcome
         why_hypotheses: context.why_hypotheses
         reproduction_notes: context.reproduction_notes
+        open_questions: context.open_questions
         limits_confidence: context.limits_confidence
       output_to_context:
         report_body: output.content
@@ -216,6 +237,7 @@ data:
       output:
         title: context.title
         key_outcome: context.key_outcome
+        open_questions: context.open_questions
         terminology_tags: context.terminology_tags
         domain_tags: context.domain_tags
         quality_gate_decision: context.judge_decision

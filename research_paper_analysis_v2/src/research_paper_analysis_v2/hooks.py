@@ -15,7 +15,6 @@ import os
 import re
 import sqlite3
 from collections import Counter
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -378,6 +377,8 @@ class V2Hooks(LoggingHooks):
                     break
 
         sorted_tags = sorted(scores.items(), key=lambda kv: kv[1].get("weight", 0), reverse=True)
+
+        # Keep original ranking from research signal scoring.
         terminology_tags = [tag for tag, _ in sorted_tags[:15]]
         terminology_tag_meta = {tag: meta for tag, meta in sorted_tags[:15]}
 
@@ -461,36 +462,15 @@ class V2Hooks(LoggingHooks):
             context["formatted_report"] = report_body
             return context
 
+        key_outcome = self._norm(context.get("key_outcome"))
+        core_contribution = " ".join(self._sentences_from_markdown(key_outcome, max_sentences=2))
+
         frontmatter = {
             "title": self._norm(context.get("title")),
             "arxiv_id": self._norm(context.get("arxiv_id")),
             "source_url": self._norm(context.get("source_url")),
-            "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "pipeline_version": "rpa-v2",
-            "quality_gate": {
-                "decision": self._norm(context.get("judge_decision")) or "REPAIR",
-                "raw": self._norm(context.get("judge_decision_raw")),
-                "pass": (self._norm(context.get("judge_decision")).upper() == "PASS"),
-                "repair_attempted": bool(context.get("repair_attempted")),
-            },
-            "corpus_context": {
-                "neighbors_considered": int(context.get("neighbors_considered") or 0),
-                "neighbors_used": int(context.get("neighbors_used") or 0),
-                "relevance_signal": "fmr+citation+author_h",
-            },
-            "token_targets": {
-                "key_outcome": self._norm(context.get("token_target_key_outcome")),
-                "why_hypotheses": self._norm(context.get("token_target_why")),
-                "reproduction": self._norm(context.get("token_target_reproduction")),
-                "limits_confidence": self._norm(context.get("token_target_limits")),
-            },
-            "terminology_tags": context.get("terminology_tags") or [],
-            "domain_tags": context.get("domain_tags") or [],
-            "terminology_tag_meta": context.get("terminology_tag_meta") or {},
-            "tagging": {
-                "taxonomy_version": "word_clouds_v1",
-                "canonicalization_map": "config/terminology_map.yml",
-            },
+            "tags": context.get("terminology_tags") or [],
+            "core_contribution": core_contribution,
         }
 
         fm_text = yaml.safe_dump(frontmatter, sort_keys=False).strip()
@@ -498,6 +478,203 @@ class V2Hooks(LoggingHooks):
         context["frontmatter"] = fm
         context["formatted_report"] = f"{fm}{report_body}"
         return context
+
+    @staticmethod
+    def _strip_markdown(text: str) -> str:
+        cleaned = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", text)
+        cleaned = re.sub(r"[`*_>#]", "", cleaned)
+        cleaned = re.sub(r"\s+", " ", cleaned)
+        return cleaned.strip()
+
+    def _sentences_from_markdown(self, markdown: str, max_sentences: int = 2) -> List[str]:
+        lines: List[str] = []
+        for raw in markdown.splitlines():
+            line = raw.strip()
+            if not line:
+                continue
+            if line.startswith("|") or re.match(r"^[-:| ]+$", line):
+                continue
+            line = re.sub(r"^[-*]\s+", "", line)
+            line = re.sub(r"^\d+[\.)]\s+", "", line)
+            line = self._strip_markdown(line)
+            if line:
+                lines.append(line)
+
+        text = " ".join(lines)
+        if not text:
+            return []
+
+        parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", text) if p.strip()]
+        if not parts:
+            parts = [text]
+
+        deduped: List[str] = []
+        seen = set()
+        for p in parts:
+            key = p.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(p)
+            if len(deduped) >= max_sentences:
+                break
+        return deduped
+
+    def _extract_key_results(self, key_outcome_text: str) -> List[str]:
+        bullets: List[str] = []
+        for raw in key_outcome_text.splitlines():
+            line = raw.strip()
+            if re.match(r"^[-*]\s+", line) or re.match(r"^\d+[\.)]\s+", line):
+                line = re.sub(r"^[-*]\s+", "", line)
+                line = re.sub(r"^\d+[\.)]\s+", "", line)
+                cleaned = self._strip_markdown(line).rstrip(".")
+                if len(cleaned) > 18:
+                    bullets.append(cleaned)
+
+        preferred = [
+            b for b in bullets
+            if re.search(r"\d|\bO\(|\blog\b|\bregret\b|\bsample\b|\bbound\b|\bepsilon\b|\bε\b", b, flags=re.IGNORECASE)
+        ]
+        ordered = preferred + [b for b in bullets if b not in preferred]
+
+        if len(ordered) < 2:
+            ordered.extend([s.rstrip(".") for s in self._sentences_from_markdown(key_outcome_text, max_sentences=3)])
+
+        out: List[str] = []
+        for item in ordered:
+            if item and item not in out:
+                out.append(item)
+            if len(out) >= 3:
+                break
+        return out[:3]
+
+    def _extract_confidence_map(self, limits_text: str) -> Dict[str, str]:
+        out: Dict[str, str] = {}
+
+        # Table-style lines
+        for raw in limits_text.splitlines():
+            line = raw.strip()
+            if "|" not in line:
+                continue
+            if re.match(r"^\|?\s*[-: ]+\|", line):
+                continue
+            cells = [self._strip_markdown(c).strip() for c in line.strip("|").split("|")]
+            if len(cells) < 2:
+                continue
+            label, value = cells[0], cells[1]
+            if self._slugify(label) in {"claim", "claim-cluster", "claim-clusters", "confidence"}:
+                continue
+            conf = self._normalize_confidence_value(value)
+            if not conf:
+                continue
+            key = self._confidence_label_key(label)
+            if key:
+                out[key] = conf
+
+        # Bullet fallback
+        if not out:
+            for raw in limits_text.splitlines():
+                line = self._strip_markdown(raw)
+                if not line:
+                    continue
+                m = re.match(r"^(.+?)\s*[:\-–]\s*(.+)$", line)
+                if not m:
+                    continue
+                key = self._confidence_label_key(m.group(1))
+                conf = self._normalize_confidence_value(m.group(2))
+                if key and conf:
+                    out[key] = conf
+
+        return out
+
+    @staticmethod
+    def _normalize_confidence_value(value: str) -> Optional[str]:
+        lowered = value.lower()
+        has_high = "high" in lowered
+        has_medium = "medium" in lowered
+        has_low = "low" in lowered
+        if has_medium:
+            return "medium"
+        if has_high and not has_low:
+            return "high"
+        if has_low and not has_high:
+            return "low"
+        if has_high and has_low:
+            return "medium"
+        return None
+
+    def _confidence_label_key(self, label: str) -> str:
+        cleaned = self._strip_markdown(label)
+        cleaned = re.sub(r"^\(?\d+\)?\s*", "", cleaned).strip()
+        slug = self._slugify(cleaned)
+        if not slug:
+            return ""
+        return "_".join([p for p in slug.split("-") if p][:5])[:48]
+
+    def _extract_limitations(self, limits_text: str) -> List[str]:
+        items: List[str] = []
+        in_lim_block = False
+        for raw in limits_text.splitlines():
+            line = raw.strip()
+            lowered = line.lower()
+            if "major uncertainties" in lowered or "limitations" in lowered:
+                in_lim_block = True
+                continue
+            if in_lim_block and ("confidence" in lowered or "next validation" in lowered or "next checks" in lowered):
+                in_lim_block = False
+            if not in_lim_block:
+                continue
+            if re.match(r"^[-*]\s+", line):
+                cleaned = self._strip_markdown(re.sub(r"^[-*]\s+", "", line)).rstrip(".")
+                if cleaned and cleaned not in items:
+                    items.append(cleaned)
+            if len(items) >= 3:
+                break
+
+        if len(items) < 2:
+            for raw in limits_text.splitlines():
+                line = raw.strip()
+                if not re.match(r"^[-*]\s+", line):
+                    continue
+                cleaned = self._strip_markdown(re.sub(r"^[-*]\s+", "", line)).rstrip(".")
+                if not cleaned:
+                    continue
+                if re.search(r"limit|uncertain|assum|unknown|risk|may\b", cleaned, flags=re.IGNORECASE):
+                    if cleaned not in items:
+                        items.append(cleaned)
+                if len(items) >= 3:
+                    break
+
+        return items[:3]
+
+    def _select_frontmatter_tags(self, context: Dict[str, Any]) -> List[str]:
+        raw_tags = context.get("terminology_tags") or []
+        meta = context.get("terminology_tag_meta") or {}
+
+        filtered: List[str] = []
+        for tag in raw_tags:
+            tag_meta = meta.get(tag) or {}
+            weight = float(tag_meta.get("weight") or 0.0)
+            sources = set(tag_meta.get("sources") or [])
+            if "paper_text" in sources and weight >= 0.2:
+                filtered.append(tag)
+
+        if not filtered:
+            filtered = [
+                tag for tag in raw_tags
+                if "paper_text" in set((meta.get(tag) or {}).get("sources") or [])
+            ]
+
+        if not filtered:
+            filtered = list(raw_tags)
+
+        out: List[str] = []
+        for tag in filtered:
+            if tag not in out:
+                out.append(tag)
+            if len(out) >= 8:
+                break
+        return out
 
     @staticmethod
     def _slugify(text: str) -> str:

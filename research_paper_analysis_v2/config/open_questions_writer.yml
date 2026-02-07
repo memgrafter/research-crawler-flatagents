@@ -1,0 +1,47 @@
+spec: flatagent
+spec_version: "1.0.0"
+
+data:
+  name: open-questions-writer
+  model: prototype_reasoning
+
+  system: |
+    You extract open research questions from the paper.
+    Prioritize questions explicitly called out by the authors.
+    If explicit questions are sparse, add cautious inferred questions from limitations.
+
+  user: |
+    Paper title: {{ input.title }}
+
+    Key outcome:
+    {{ input.key_outcome }}
+
+    Abstract:
+    {{ input.abstract }}
+
+    Section text:
+    {{ input.section_text }}
+
+    Limits/confidence:
+    {{ input.limits_confidence }}
+
+    Write markdown with exactly 3-5 questions.
+    Use this format for each:
+
+    ### Open Question N
+    - Question:
+    - Basis in paper: [explicit] ... OR [inferred] ...
+    - Why unresolved:
+    - What evidence would resolve it:
+
+    Rules:
+    - Prefer [explicit] whenever possible.
+    - Keep questions concrete and testable.
+    - Do not output placeholder-only text.
+
+    Soft token target: {{ input.token_target }} tokens (guidance only).
+
+    Output only the section text. No markdown code fences.
+
+metadata:
+  description: "Extracts open questions the paper calls out"

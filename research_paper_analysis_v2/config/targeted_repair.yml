@@ -16,6 +16,15 @@ data:
     CURRENT REPORT BODY:
     {{ input.report_body }}
 
+    Required section headers to keep/add exactly:
+    - ## Method Summary
+    - ## Key Results
+    - ## Why It Matters (Hypothesis Ledger)
+    - ## Open Questions the Paper Calls Out
+    - ## Limitations
+    - ## Confidence
+    - ## Next Checks
+
     Rules:
     - Keep all required section headers exactly unchanged
     - Preserve optional sections (for example: Quick Facts, Executive Summary) if present
