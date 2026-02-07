@@ -16,8 +16,8 @@ cd /Users/trentrobbins/code/research_crawler/research_paper_analysis_v2
 uv sync
 ```
 
-## Run one worker (prototype)
-Launch one fire-and-forget worker against the existing queue:
+## Run one worker
+Launch one worker against the existing queue:
 
 ```bash
 cd /Users/trentrobbins/code/research_crawler/research_paper_analysis_v2
@@ -26,8 +26,21 @@ cd /Users/trentrobbins/code/research_crawler/research_paper_analysis_v2
 ./run_single_worker.sh --worker-id paper-worker-v2-manual
 ```
 
+## Run batch scheduler (lean)
+Spawn up to `-w/--workers` workers with no legacy checker/reaper stack.
+
+```bash
+cd /Users/trentrobbins/code/research_crawler/research_paper_analysis_v2
+
+# one scheduler pass
+./run_batch.sh -w 6
+
+# daemon mode (polls and exits when queue+workers drain)
+./run_batch.sh -w 6 --daemon
+```
+
 This uses:
-- `config/single_worker_launcher.yml`
+- `config/batch_scheduler.yml`
 - `config/paper_analysis_worker.yml`
 - v2 hook module `research_paper_analysis_v2.distributed_hooks.DistributedPaperAnalysisHooks`
 

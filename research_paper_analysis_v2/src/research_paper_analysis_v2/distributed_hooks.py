@@ -11,6 +11,7 @@ import os
 import re
 import socket
 import sqlite3
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -41,6 +42,7 @@ class DistributedPaperAnalysisHooks(LoggingHooks):
         repo_root = Path(__file__).resolve().parents[3]
         project_root = Path(__file__).resolve().parents[2]
 
+        self.project_root = project_root
         self.db_path = db_path or os.environ.get(
             "ARXIV_DB_PATH",
             str(repo_root / "arxiv_crawler" / "data" / "arxiv.sqlite"),
@@ -63,6 +65,9 @@ class DistributedPaperAnalysisHooks(LoggingHooks):
             "prepare_paper": self._prepare_paper,
             "complete_paper": self._complete_paper,
             "fail_paper": self._fail_paper,
+            "get_pool_state": self._get_pool_state,
+            "calculate_spawn": self._calculate_spawn,
+            "spawn_workers": self._spawn_workers,
         }
         handler = handlers.get(action)
         if handler:
@@ -106,6 +111,107 @@ class DistributedPaperAnalysisHooks(LoggingHooks):
             )
             conn.commit()
 
+        return context
+
+    async def _get_pool_state(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Count latest-version pending jobs and in-flight processing jobs."""
+        async with self._lock:
+            conn = self._get_conn()
+
+            # Keep queue clean: non-latest pending revisions should not be worked.
+            conn.execute(
+                """
+                WITH latest_versions AS (
+                    SELECT arxiv_id, MAX(version) AS max_version
+                    FROM papers
+                    GROUP BY arxiv_id
+                )
+                UPDATE paper_queue
+                SET status = 'backlog',
+                    priority = 0,
+                    worker = NULL,
+                    claimed_by = NULL,
+                    claimed_at = NULL,
+                    started_at = NULL
+                WHERE status = 'pending'
+                  AND paper_id IN (
+                      SELECT p.id
+                      FROM papers p
+                      JOIN latest_versions lv ON lv.arxiv_id = p.arxiv_id
+                      WHERE p.version < lv.max_version
+                  )
+                """
+            )
+            conn.commit()
+
+            queue_depth = int(
+                conn.execute(
+                    """
+                    WITH latest_versions AS (
+                        SELECT arxiv_id, MAX(version) AS max_version
+                        FROM papers
+                        GROUP BY arxiv_id
+                    )
+                    SELECT COUNT(*)
+                    FROM paper_queue q
+                    JOIN papers p ON p.id = q.paper_id
+                    JOIN latest_versions lv
+                      ON lv.arxiv_id = p.arxiv_id
+                     AND lv.max_version = p.version
+                    WHERE q.status = 'pending'
+                    """
+                ).fetchone()[0]
+                or 0
+            )
+
+            active_workers = int(
+                conn.execute(
+                    "SELECT COUNT(*) FROM paper_queue WHERE status = 'processing'"
+                ).fetchone()[0]
+                or 0
+            )
+
+        context["queue_depth"] = queue_depth
+        context["active_workers"] = active_workers
+        return context
+
+    async def _calculate_spawn(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        queue_depth = int(context.get("queue_depth") or 0)
+        active_workers = int(context.get("active_workers") or 0)
+        max_workers = int(context.get("max_workers") or 1)
+
+        available_slots = max(max_workers - active_workers, 0)
+        workers_to_spawn = min(queue_depth, available_slots)
+
+        context["max_workers"] = max_workers
+        context["workers_to_spawn"] = workers_to_spawn
+        context["available_slots"] = available_slots
+        return context
+
+    async def _spawn_workers(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        workers_to_spawn = int(context.get("workers_to_spawn") or 0)
+        if workers_to_spawn <= 0:
+            context["spawned_ids"] = []
+            context["spawned_count"] = 0
+            return context
+
+        from flatmachines.actions import launch_machine
+
+        worker_machine = self.project_root / "config" / "paper_analysis_worker.yml"
+        if not worker_machine.exists():
+            raise ValueError(f"Worker machine config not found: {worker_machine}")
+
+        spawned_ids: List[str] = []
+        for _ in range(workers_to_spawn):
+            worker_id = f"paper-worker-v2-{uuid.uuid4().hex[:8]}"
+            launch_machine(
+                machine_config=str(worker_machine),
+                input_data={"worker_id": worker_id},
+            )
+            spawned_ids.append(worker_id)
+
+        context["spawned_ids"] = spawned_ids
+        context["spawned_count"] = len(spawned_ids)
         return context
 
     async def _claim_paper(self, context: Dict[str, Any]) -> Dict[str, Any]:
