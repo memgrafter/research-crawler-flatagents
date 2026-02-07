@@ -466,7 +466,7 @@ class V2Hooks(LoggingHooks):
         core_contribution = " ".join(self._sentences_from_markdown(key_outcome, max_sentences=2))
 
         frontmatter = {
-            "format_version": "rpa-2.0",
+            "ver": "rpa2",
             "title": self._norm(context.get("title")),
             "arxiv_id": self._norm(context.get("arxiv_id")),
             "source_url": self._norm(context.get("source_url")),
