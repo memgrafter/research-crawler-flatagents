@@ -59,13 +59,14 @@ For prototyping, v2 includes a simple single-worker path that reuses the existin
 - `single_worker_launcher.yml`
   - launches exactly one `paper_analysis_worker.yml` and exits
 
-This intentionally avoids adding scheduler code in this repo.
+This keeps scheduling minimal in-repo: a lean batch scheduler pass (`batch_scheduler.yml`) that only checks pool state and spawns workers.
 
 ## Files
 - `profiles.yml`: model profiles
 - `machine.yml`: v2 orchestration
 - `paper_analysis_worker.yml`: one worker against old queue/db
 - `single_worker_launcher.yml`: fire-and-forget one worker
+- `batch_scheduler.yml`: one scheduler pass (pool check + spawn)
 - `key_outcome_writer.yml`: key outcome section
 - `why_hypothesis_writer.yml`: why-it-matters hypothesis ledger
 - `reproduction_writer.yml`: reproduction notes
