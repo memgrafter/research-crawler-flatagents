@@ -1,0 +1,44 @@
+spec: flatmachine
+spec_version: "1.0.0"
+
+data:
+  name: why-hypothesis
+  profiles: ./profiles.yml
+
+  agents:
+    writer: ./why_hypothesis_writer.yml
+
+  context:
+    result: null
+
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: write
+
+    write:
+      agent: writer
+      execution:
+        type: retry
+        backoffs: [2, 8, 16, 35]
+      input:
+        title: input.title
+        key_outcome: input.key_outcome
+        abstract: input.abstract
+        section_text: input.section_text
+        corpus_signals: input.corpus_signals
+        corpus_neighbors: input.corpus_neighbors
+        token_target: input.token_target_why
+      output_to_context:
+        result: output.content
+      transitions:
+        - to: done
+
+    done:
+      type: final
+      output:
+        content: context.result
+
+metadata:
+  description: "Wrapper machine for why_hypothesis_writer (expensive model)"

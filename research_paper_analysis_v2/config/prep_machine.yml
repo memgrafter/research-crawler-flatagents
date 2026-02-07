@@ -1,0 +1,113 @@
+spec: flatmachine
+spec_version: "1.0.0"
+
+data:
+  name: prep-pipeline
+  profiles: ./profiles.yml
+
+  persistence:
+    enabled: true
+    backend: local
+
+  hooks:
+    module: research_paper_analysis_v2.hooks
+    class: V2Hooks
+
+  settings:
+    max_steps: 15
+
+  context:
+    # Passed in by runner
+    arxiv_id: input.arxiv_id
+    paper_id: input.paper_id
+    execution_id: input.execution_id
+    title: input.title
+    authors: input.authors
+    abstract: input.abstract
+
+    # Token target for key_outcome (cheap)
+    token_target_key_outcome: "120-180"
+
+    # Populated by actions
+    section_text: null
+    reference_count: 0
+    corpus_signals: null
+    corpus_neighbors: null
+    neighbors_considered: 0
+    neighbors_used: 0
+    key_outcome: null
+
+  agents:
+    key_outcome_writer: ./key_outcome_writer.yml
+
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: download_pdf
+
+    download_pdf:
+      action: download_pdf
+      on_error: prep_failed
+      transitions:
+        - to: extract_text
+
+    extract_text:
+      action: extract_text
+      on_error: prep_failed
+      transitions:
+        - to: collect_corpus_signals
+
+    collect_corpus_signals:
+      action: collect_corpus_signals
+      transitions:
+        - to: write_key_outcome
+
+    write_key_outcome:
+      agent: key_outcome_writer
+      execution:
+        type: retry
+        backoffs: [2, 8, 16]
+      input:
+        title: context.title
+        authors: context.authors
+        abstract: context.abstract
+        section_text: context.section_text
+        token_target: context.token_target_key_outcome
+      output_to_context:
+        key_outcome: output.content
+      on_error: prep_failed
+      transitions:
+        - to: save_prep_result
+
+    save_prep_result:
+      action: save_prep_result
+      transitions:
+        - to: done
+
+    done:
+      type: final
+      output:
+        arxiv_id: context.arxiv_id
+        execution_id: context.execution_id
+        key_outcome: context.key_outcome
+        section_text: context.section_text
+        reference_count: context.reference_count
+        corpus_signals: context.corpus_signals
+        corpus_neighbors: context.corpus_neighbors
+
+    prep_failed:
+      action: mark_execution_failed
+      transitions:
+        - to: failed
+
+    failed:
+      type: final
+      output:
+        error: context.last_error
+        arxiv_id: context.arxiv_id
+        execution_id: context.execution_id
+
+metadata:
+  description: "Prep pipeline: download PDF, extract text, corpus signals, key outcome"
+  tags: ["prep", "cheap-model"]

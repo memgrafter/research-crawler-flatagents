@@ -1,0 +1,43 @@
+spec: flatmachine
+spec_version: "1.0.0"
+
+data:
+  name: reproduction
+  profiles: ./profiles.yml
+
+  agents:
+    writer: ./reproduction_writer.yml
+
+  context:
+    result: null
+
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: write
+
+    write:
+      agent: writer
+      execution:
+        type: retry
+        backoffs: [2, 8, 16, 35]
+      input:
+        title: input.title
+        key_outcome: input.key_outcome
+        abstract: input.abstract
+        section_text: input.section_text
+        reference_count: input.reference_count
+        token_target: input.token_target_reproduction
+      output_to_context:
+        result: output.content
+      transitions:
+        - to: done
+
+    done:
+      type: final
+      output:
+        content: context.result
+
+metadata:
+  description: "Wrapper machine for reproduction_writer (expensive model)"

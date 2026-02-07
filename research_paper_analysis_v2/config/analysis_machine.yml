@@ -1,0 +1,247 @@
+spec: flatmachine
+spec_version: "1.0.0"
+
+data:
+  name: analysis-pipeline
+  profiles: ./profiles.yml
+
+  persistence:
+    enabled: true
+    backend: local
+
+  hooks:
+    module: research_paper_analysis_v2.hooks
+    class: V2Hooks
+
+  settings:
+    max_steps: 30
+
+  context:
+    # Identity (passed by runner from prep_output)
+    arxiv_id: input.arxiv_id
+    execution_id: input.execution_id
+    paper_id: input.paper_id
+    source_url: input.source_url
+    title: input.title
+    authors: input.authors
+    abstract: input.abstract
+
+    # From prep phase
+    section_text: input.section_text
+    reference_count: input.reference_count
+    key_outcome: input.key_outcome
+    corpus_signals: input.corpus_signals
+    corpus_neighbors: input.corpus_neighbors
+
+    # Token targets
+    token_target_why: "500-800"
+    token_target_reproduction: "220-380"
+    token_target_limits: "120-220"
+    token_target_open_questions: "120-220"
+
+    # Generated section content (populated by agents)
+    why_hypotheses: null
+    reproduction_notes: null
+    limits_confidence: null
+    open_questions: null
+
+    # Terminology tags (populated by action)
+    terminology_tags: []
+    domain_tags: []
+    terminology_tag_meta: {}
+
+    # Report assembly
+    report_body: null
+    frontmatter: null
+    formatted_report: null
+
+    # Judge + repair control
+    judge_decision_raw: null
+    judge_decision: "REPAIR"
+    repair_attempted: false
+
+  agents:
+    limits_confidence_writer: ./limits_confidence_writer.yml
+    open_questions_writer: ./open_questions_writer.yml
+    report_assembler: ./report_assembler.yml
+    completeness_judge: ./completeness_judge.yml
+    targeted_repair: ./targeted_repair.yml
+
+  machines:
+    why_hypothesis_machine: ./why_hypothesis_machine.yml
+    reproduction_machine: ./reproduction_machine.yml
+
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: parallel_expensive_writers
+
+    parallel_expensive_writers:
+      machine: [why_hypothesis_machine, reproduction_machine]
+      mode: settled
+      input:
+        title: context.title
+        key_outcome: context.key_outcome
+        abstract: context.abstract
+        section_text: context.section_text
+        reference_count: context.reference_count
+        corpus_signals: context.corpus_signals
+        corpus_neighbors: context.corpus_neighbors
+        token_target_why: context.token_target_why
+        token_target_reproduction: context.token_target_reproduction
+      output_to_context:
+        parallel_raw: output
+      on_error: analysis_failed
+      transitions:
+        - to: unpack_parallel_results
+
+    # Unpack parallel output into context fields.
+    # parallel_raw = {why_hypothesis_machine: {content: ...}, reproduction_machine: {content: ...}}
+    unpack_parallel_results:
+      action: unpack_parallel_results
+      transitions:
+        - to: write_limits_confidence
+
+    write_limits_confidence:
+      agent: limits_confidence_writer
+      execution:
+        type: retry
+        backoffs: [2, 8, 16]
+      input:
+        title: context.title
+        key_outcome: context.key_outcome
+        why_hypotheses: context.why_hypotheses
+        reproduction_notes: context.reproduction_notes
+        corpus_signals: context.corpus_signals
+        token_target: context.token_target_limits
+      output_to_context:
+        limits_confidence: output.content
+      on_error: analysis_failed
+      transitions:
+        - to: write_open_questions
+
+    write_open_questions:
+      agent: open_questions_writer
+      execution:
+        type: retry
+        backoffs: [2, 8, 16]
+      input:
+        title: context.title
+        key_outcome: context.key_outcome
+        abstract: context.abstract
+        section_text: context.section_text
+        limits_confidence: context.limits_confidence
+        token_target: context.token_target_open_questions
+      output_to_context:
+        open_questions: output.content
+      on_error: analysis_failed
+      transitions:
+        - to: derive_terminology_tags
+
+    derive_terminology_tags:
+      action: derive_terminology_tags
+      transitions:
+        - to: assemble_report
+
+    assemble_report:
+      agent: report_assembler
+      execution:
+        type: retry
+        backoffs: [2, 8, 16]
+      input:
+        title: context.title
+        arxiv_id: context.arxiv_id
+        source_url: context.source_url
+        authors: context.authors
+        reference_count: context.reference_count
+        key_outcome: context.key_outcome
+        why_hypotheses: context.why_hypotheses
+        reproduction_notes: context.reproduction_notes
+        open_questions: context.open_questions
+        limits_confidence: context.limits_confidence
+      output_to_context:
+        report_body: output.content
+      on_error: analysis_failed
+      transitions:
+        - to: judge_report
+
+    judge_report:
+      agent: completeness_judge
+      execution:
+        type: retry
+        backoffs: [2, 8]
+      input:
+        report_body: context.report_body
+      output_to_context:
+        judge_decision_raw: output.content
+      transitions:
+        - to: normalize_judge_decision
+
+    normalize_judge_decision:
+      action: normalize_judge_decision
+      transitions:
+        - condition: "context.judge_decision == 'PASS'"
+          to: prepend_frontmatter_v2
+        - condition: "context.judge_decision == 'FAIL'"
+          to: analysis_failed
+        - condition: "context.repair_attempted == true"
+          to: analysis_failed
+        - to: targeted_repair_once
+
+    targeted_repair_once:
+      agent: targeted_repair
+      execution:
+        type: retry
+        backoffs: [2, 8]
+      input:
+        report_body: context.report_body
+      output_to_context:
+        report_body: output.content
+      transitions:
+        - to: mark_repair_attempted
+
+    mark_repair_attempted:
+      action: set_repair_attempted
+      transitions:
+        - to: judge_report
+
+    prepend_frontmatter_v2:
+      action: prepend_frontmatter_v2
+      transitions:
+        - to: save_analysis_result
+
+    save_analysis_result:
+      action: save_analysis_result
+      transitions:
+        - to: done
+
+    done:
+      type: final
+      output:
+        title: context.title
+        arxiv_id: context.arxiv_id
+        key_outcome: context.key_outcome
+        open_questions: context.open_questions
+        terminology_tags: context.terminology_tags
+        domain_tags: context.domain_tags
+        quality_gate_decision: context.judge_decision
+        formatted_report: context.formatted_report
+
+    analysis_failed:
+      action: mark_execution_failed
+      transitions:
+        - to: failed
+
+    failed:
+      type: final
+      output:
+        error: context.last_error
+        arxiv_id: context.arxiv_id
+        execution_id: context.execution_id
+        quality_gate_decision: context.judge_decision
+        report_body: context.report_body
+
+metadata:
+  description: "Analysis pipeline: parallel expensive writers, limits, open questions, assemble, judge, repair"
+  tags: ["analysis", "expensive-model", "parallel"]
