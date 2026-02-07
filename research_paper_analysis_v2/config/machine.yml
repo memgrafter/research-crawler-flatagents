@@ -115,6 +115,7 @@ data:
       input:
         title: context.title
         key_outcome: context.key_outcome
+        abstract: context.abstract
         section_text: context.section_text
         reference_count: context.reference_count
         token_target: context.token_target_reproduction
@@ -152,7 +153,10 @@ data:
         backoffs: [2, 8]
       input:
         title: context.title
+        arxiv_id: context.arxiv_id
+        source_url: context.source_url
         authors: context.authors
+        reference_count: context.reference_count
         key_outcome: context.key_outcome
         why_hypotheses: context.why_hypotheses
         reproduction_notes: context.reproduction_notes

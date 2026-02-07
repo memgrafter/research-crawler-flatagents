@@ -31,6 +31,10 @@ data:
     - REPAIR: fixable issues (missing/weak sections, placeholders, formatting issues).
     - FAIL: unusable output after a repair attempt or severe corruption.
 
+    Placeholder guidance:
+    - A section is placeholder-only if it is effectively just one fallback line (e.g., only "Not specified in provided source text.").
+    - A section can still PASS if unknowns are explicitly documented at line-item level within a structured section (bullets/table/subheadings).
+
     Output exactly one token: PASS or REPAIR or FAIL.
 
 metadata:

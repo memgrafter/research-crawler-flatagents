@@ -9,7 +9,9 @@ data:
       temperature: 1.0
 
     prototype_reasoning:
-      name: openrouter/pony-alpha
+      # LiteLLM strips one leading provider segment for OpenRouter models.
+      # Use double prefix so OpenRouter receives model id: openrouter/pony-alpha.
+      name: openrouter/openrouter/pony-alpha
       temperature: 1.0
 
   default: prototype_structured
