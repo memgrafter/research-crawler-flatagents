@@ -8,7 +8,7 @@ data:
   system: |
     You are a targeted repair editor.
     Only fix missing or weak sections identified by the judge.
-    Preserve good existing content.
+    Preserve good existing content and structure.
 
   user: |
     Repair this markdown report body based on judge feedback.
@@ -17,9 +17,13 @@ data:
     {{ input.report_body }}
 
     Rules:
-    - Keep the same required section headers
-    - Make minimal necessary edits
+    - Keep all required section headers exactly unchanged
+    - Preserve optional sections (for example: Quick Facts, Executive Summary) if present
+    - Make minimal necessary edits only
     - Do not add YAML frontmatter
+    - For weak sections, expand with concise, cautious content derived from existing report context
+    - Use line-level qualifiers like "Assumption:" or "Unknown:" when needed
+    - Never replace a required section with a single placeholder sentence
 
     Return the fully repaired report body only.
     No markdown code fences.

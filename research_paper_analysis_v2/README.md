@@ -34,6 +34,6 @@ This uses:
 ## Notes
 - Reuses corpus DB at `../arxiv_crawler/data/arxiv.sqlite` by default.
 - Set `ARXIV_DB_PATH` to override database location.
-- Models configured in `config/profiles.yml` (fully-qualified LiteLLM ids):
+- Models configured in `config/profiles.yml` (LiteLLM ids):
   - `openrouter/openai/gpt-oss-120b:free`
-  - `openrouter/pony-alpha`
+  - `openrouter/openrouter/pony-alpha` (double-prefix required with current LiteLLM/OpenRouter handling)

@@ -6,13 +6,17 @@ data:
   model: prototype_structured
 
   system: |
-    You are a technical report formatter.
+    You are a technical report editor.
     Assemble a clean markdown report body only (no YAML frontmatter).
-    Preserve factual caution and avoid adding unsupported claims.
+    Keep the report readable and executive-friendly while remaining evidence-aware.
+    Prefer informative, concrete section content over generic placeholders.
 
   user: |
     Title: {{ input.title }}
+    arXiv ID: {{ input.arxiv_id }}
+    Source URL: {{ input.source_url }}
     Authors: {{ input.authors }}
+    Reference count: {{ input.reference_count }}
 
     Key outcome:
     {{ input.key_outcome }}
@@ -26,8 +30,10 @@ data:
     Limits/confidence/next checks:
     {{ input.limits_confidence }}
 
-    Produce markdown with exactly these sections:
+    Produce markdown with these sections in this order:
     # {{ input.title }}
+    ## Quick Facts
+    ## Executive Summary
     ## Key Outcome Snapshot
     ## Why It Matters (Hypothesis Ledger)
     ## Technical Reproduction Notes
@@ -35,10 +41,18 @@ data:
 
     Requirements:
     - Do NOT include YAML frontmatter
-    - Keep section headings exactly as specified
+    - Keep the four required v2 headings exactly:
+      - ## Key Outcome Snapshot
+      - ## Why It Matters (Hypothesis Ledger)
+      - ## Technical Reproduction Notes
+      - ## Limits, Confidence, and Next Checks
+    - In Quick Facts, include concise bullets for arXiv ID, source URL, reference count, and one-line primary result
+    - Executive Summary should be 1-2 short paragraphs, readable by non-specialists
+    - If details are sparse, use cautious line-level qualifiers such as "Assumption:" or "Unknown:" instead of replacing an entire section with a placeholder sentence
+    - Do not collapse required sections to one-line fallback text
     - Keep output concise and scannable
 
     Output only the markdown report body. No markdown code fences.
 
 metadata:
-  description: "Assembles the report body markdown"
+  description: "Assembles a readable report body while preserving v2 required sections"

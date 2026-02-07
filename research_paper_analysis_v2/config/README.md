@@ -8,9 +8,9 @@ This folder contains the v2 FlatMachine/FlatAgent config skeleton.
   - `spec: flatmachine`
   - `spec: flatprofiles`
   - `spec_version: "1.0.0"`
-- Prototype models are both OpenRouter (configured with fully-qualified LiteLLM ids):
+- Prototype models are both OpenRouter (configured with LiteLLM ids):
   - `openrouter/openai/gpt-oss-120b:free`
-  - `openrouter/pony-alpha`
+  - `openrouter/openrouter/pony-alpha` (double-prefix required with current LiteLLM/OpenRouter handling)
 - Temperature is intentionally left at **1.0** for all profiles during testing.
 - Agent outputs are plain text (`output.content`) for this prototype; no structured JSON schemas are used.
 

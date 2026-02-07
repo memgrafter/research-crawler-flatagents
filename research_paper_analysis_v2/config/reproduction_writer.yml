@@ -8,7 +8,7 @@ data:
   system: |
     You are a pragmatic ML engineer documenting reproduction guidance.
     Keep it concise and actionable.
-    Do not invent unavailable details.
+    Use provided inputs first; where details are missing, propose clearly labeled assumptions.
 
   user: |
     Paper title: {{ input.title }}
@@ -16,22 +16,44 @@ data:
     Key outcome:
     {{ input.key_outcome }}
 
+    Abstract:
+    {{ input.abstract }}
+
     Reference count: {{ input.reference_count }}
 
     Section text:
     {{ input.section_text }}
 
-    Write concise technical reproduction notes.
-    Soft token target: {{ input.token_target }} tokens (guidance only, not strict).
+    Write markdown with these headings in this order:
 
-    Cover:
-    - likely setup assumptions
-    - data/task assumptions
-    - model/training essentials
-    - evaluation essentials
-    - common failure modes and diagnostics
+    ### What is directly specified
+    - Task/problem:
+    - Inputs/data:
+    - Objective/metrics:
+    - Method/training procedure:
+
+    ### Minimum viable reproduction plan
+    - Step 1:
+    - Step 2:
+    - Step 3:
+
+    ### Unknowns that block faithful reproduction
+    - Unknown 1:
+    - Unknown 2:
+
+    ### Common failure modes and diagnostics
+    - Failure mode 1:
+    - Failure mode 2:
+
+    Rules:
+    - Prioritize concrete, testable steps.
+    - If a key detail is missing, use line-level labels like "Assumption:" or "Unknown:".
+    - Do not leave the section empty and do not output a one-line fallback.
+    - Keep recommendations practical for a first reproduction attempt.
+
+    Soft token target: {{ input.token_target }} tokens (guidance only, not strict).
 
     Output only the section text. No markdown code fences.
 
 metadata:
-  description: "Writes practical reproduction notes"
+  description: "Writes practical reproduction notes with explicit assumptions when details are sparse"
