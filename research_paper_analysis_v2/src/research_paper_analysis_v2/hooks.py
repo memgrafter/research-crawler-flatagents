@@ -1,24 +1,38 @@
 """Hooks for Research Paper Analysis V2.
 
-Implements custom FlatMachine actions used by config/machine.yml:
+Implements custom FlatMachine actions for prep_machine.yml and analysis_machine.yml:
+
+Prep actions:
+- download_pdf
+- extract_text
 - collect_corpus_signals
+- save_prep_result
+
+Analysis actions:
+- unpack_parallel_results
 - derive_terminology_tags
 - prepend_frontmatter_v2
 - normalize_judge_decision
 - set_repair_attempted
+- save_analysis_result
+- mark_execution_failed
 """
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import re
 import sqlite3
 from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+import httpx
 import yaml
+from pypdf import PdfReader
 
 from flatmachines import LoggingHooks
 from flatagents import get_logger
@@ -33,12 +47,27 @@ STOPWORDS = {
 }
 
 
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _slugify_title(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9]+", "-", value).strip("-").lower()
+    return cleaned or "paper"
+
+
 class V2Hooks(LoggingHooks):
-    """Custom action hooks for the V2 pipeline."""
+    """Custom action hooks for the V2 pipeline.
+
+    Manages two DB connections:
+    - arxiv DB (read-only): corpus signals, neighbor search
+    - v2 executions DB (read-write): execution tracking, daily usage
+    """
 
     def __init__(
         self,
         db_path: Optional[str] = None,
+        v2_db_path: Optional[str] = None,
         neighbors_considered: int = 25,
         neighbors_used: int = 8,
         log_level: int = 20,
@@ -46,6 +75,9 @@ class V2Hooks(LoggingHooks):
         super().__init__(log_level=log_level)
         self._repo_root = Path(__file__).resolve().parents[3]
         self._project_root = Path(__file__).resolve().parents[2]
+        self._data_dir = self._project_root / "data"
+
+        # Arxiv DB — read-only for corpus signals
         self._db_path = db_path or os.environ.get(
             "ARXIV_DB_PATH",
             str(self._repo_root / "arxiv_crawler" / "data" / "arxiv.sqlite"),
@@ -54,34 +86,309 @@ class V2Hooks(LoggingHooks):
         self._neighbors_used = int(neighbors_used)
         self._conn: Optional[sqlite3.Connection] = None
 
+        # V2 executions DB — read-write, owned by v2
+        self._v2_db_path = v2_db_path or os.environ.get(
+            "V2_EXECUTIONS_DB_PATH",
+            str(self._data_dir / "v2_executions.sqlite"),
+        )
+        self._v2_conn: Optional[sqlite3.Connection] = None
+
+    # -------------------------------------------------------------------------
+    # DB connections
+    # -------------------------------------------------------------------------
+
     def _conn_or_none(self) -> Optional[sqlite3.Connection]:
+        """Arxiv DB connection (read-only for corpus signals)."""
         if self._conn is not None:
             return self._conn
         path = Path(self._db_path)
         if not path.exists():
             logger.warning("DB not found for corpus signals: %s", path)
             return None
-        conn = sqlite3.connect(str(path), check_same_thread=False)
+        timeout_s = float(os.environ.get("RPA_V2_SQLITE_TIMEOUT_SECONDS", "30"))
+        busy_timeout_ms = int(os.environ.get("RPA_V2_SQLITE_BUSY_TIMEOUT_MS", "10000"))
+
+        conn = sqlite3.connect(str(path), check_same_thread=False, timeout=max(timeout_s, 1.0))
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute(f"PRAGMA busy_timeout = {max(busy_timeout_ms, 1)}")
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
         self._conn = conn
         return conn
 
+    def _v2_db(self) -> sqlite3.Connection:
+        """V2 executions DB connection (read-write, owned by v2)."""
+        if self._v2_conn is not None:
+            return self._v2_conn
+        path = Path(self._v2_db_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(path), check_same_thread=False, timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
+        conn.execute("PRAGMA busy_timeout = 10000")
+        # Auto-create schema
+        schema_file = self._project_root / "schema" / "v2_executions.sql"
+        if schema_file.exists():
+            conn.executescript(schema_file.read_text(encoding="utf-8"))
+        self._v2_conn = conn
+        return conn
+
+    # -------------------------------------------------------------------------
+    # Action router
+    # -------------------------------------------------------------------------
+
     async def on_action(self, action_name: str, context: Dict[str, Any]) -> Dict[str, Any]:
-        if action_name == "collect_corpus_signals":
-            return await self._collect_corpus_signals(context)
-        if action_name == "derive_terminology_tags":
-            return await self._derive_terminology_tags(context)
-        if action_name == "prepend_frontmatter_v2":
-            return await self._prepend_frontmatter_v2(context)
-        if action_name == "normalize_judge_decision":
-            raw = self._norm(context.get("judge_decision_raw")).upper()
-            match = re.search(r"\b(PASS|REPAIR|FAIL)\b", raw)
-            context["judge_decision"] = match.group(1) if match else "REPAIR"
+        handlers = {
+            # Prep actions
+            "download_pdf": self._download_pdf,
+            "extract_text": self._extract_text,
+            "collect_corpus_signals": self._collect_corpus_signals,
+            "save_prep_result": self._save_prep_result,
+            # Analysis actions
+            "unpack_parallel_results": self._unpack_parallel_results,
+            "derive_terminology_tags": self._derive_terminology_tags,
+            "prepend_frontmatter_v2": self._prepend_frontmatter_v2,
+            "normalize_judge_decision": self._normalize_judge_decision,
+            "set_repair_attempted": self._set_repair_attempted,
+            "save_analysis_result": self._save_analysis_result,
+            "mark_execution_failed": self._mark_execution_failed,
+        }
+        handler = handlers.get(action_name)
+        if handler:
+            return await handler(context)
+        return await super().on_action(action_name, context)
+
+    # -------------------------------------------------------------------------
+    # Prep actions: download_pdf, extract_text
+    # -------------------------------------------------------------------------
+
+    async def _download_pdf(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        arxiv_id = self._norm(context.get("arxiv_id"))
+        if not arxiv_id:
+            raise ValueError("No arxiv_id in context for download_pdf")
+
+        self._data_dir.mkdir(parents=True, exist_ok=True)
+        safe_id = arxiv_id.replace("/", "_")
+        pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+        pdf_path = self._data_dir / f"{safe_id}.pdf"
+
+        if not pdf_path.exists():
+            logger.info("Downloading PDF: %s", pdf_url)
+            resp = httpx.get(pdf_url, follow_redirects=True, timeout=60.0)
+            resp.raise_for_status()
+            pdf_path.write_bytes(resp.content)
+        else:
+            logger.info("PDF already exists: %s", pdf_path)
+
+        context["pdf_path"] = str(pdf_path)
+        return context
+
+    async def _extract_text(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        arxiv_id = self._norm(context.get("arxiv_id"))
+        if not arxiv_id:
+            raise ValueError("No arxiv_id in context for extract_text")
+
+        safe_id = arxiv_id.replace("/", "_")
+        pdf_path = self._data_dir / f"{safe_id}.pdf"
+        txt_path = self._data_dir / f"{safe_id}.txt"
+
+        if txt_path.exists():
+            full_text = txt_path.read_text(encoding="utf-8")
+        else:
+            if not pdf_path.exists():
+                raise FileNotFoundError(f"PDF not found: {pdf_path}")
+            reader = PdfReader(pdf_path)
+            pages = []
+            for i, page in enumerate(reader.pages):
+                text = page.extract_text() or ""
+                pages.append(f"[PAGE {i + 1}]\n{text}")
+            full_text = "\n\n".join(pages)
+            txt_path.write_text(full_text, encoding="utf-8")
+
+        # Extract sections
+        section_pattern = r"\n(\d+(?:\.\d+)?)\s+([A-Z][^\n]{3,80})\n"
+        section_matches = list(re.finditer(section_pattern, full_text))
+
+        sections: List[str] = []
+        for i, match in enumerate(section_matches[:6]):
+            section_num = match.group(1)
+            section_title = match.group(2).strip()
+            start_pos = match.end()
+
+            if i + 1 < len(section_matches):
+                end_pos = section_matches[i + 1].start()
+            else:
+                ref_match = re.search(r"\nReferences\s*\n", full_text[start_pos:], re.IGNORECASE)
+                end_pos = start_pos + ref_match.start() if ref_match else len(full_text)
+
+            content = full_text[start_pos:end_pos].strip()[:3000]
+            sections.append(f"=== {section_num} {section_title} ===\n{content}")
+
+        section_text = "\n\n".join(sections)
+
+        # Extract references
+        ref_match = re.search(r"\nReferences\s*\n(.*)", full_text, re.DOTALL | re.IGNORECASE)
+        references: List[str] = []
+        if ref_match:
+            ref_text = ref_match.group(1)
+            refs = re.split(r"\n\s*\[?\d+\]?\s*", ref_text)
+            references = [r.strip()[:200] for r in refs if len(r.strip()) > 20][:40]
+
+        context["section_text"] = section_text
+        context["reference_count"] = len(references)
+        return context
+
+    # -------------------------------------------------------------------------
+    # Prep result: save to v2 executions DB
+    # -------------------------------------------------------------------------
+
+    async def _save_prep_result(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        execution_id = self._norm(context.get("execution_id"))
+        if not execution_id:
+            logger.warning("No execution_id in context, skipping save_prep_result")
             return context
-        if action_name == "set_repair_attempted":
-            context["repair_attempted"] = True
-            return context
-        return super().on_action(action_name, context)
+
+        prep_output = {
+            "key_outcome": context.get("key_outcome"),
+            "section_text": context.get("section_text"),
+            "reference_count": context.get("reference_count"),
+            "corpus_signals": context.get("corpus_signals"),
+            "corpus_neighbors": context.get("corpus_neighbors"),
+        }
+
+        conn = self._v2_db()
+        conn.execute(
+            """
+            UPDATE executions
+            SET status = 'prepped',
+                prep_output = ?,
+                updated_at = ?
+            WHERE execution_id = ?
+            """,
+            (json.dumps(prep_output), _utc_now_iso(), execution_id),
+        )
+        conn.commit()
+
+        logger.info("Prep result saved for execution %s", execution_id)
+        return context
+
+    # -------------------------------------------------------------------------
+    # Analysis actions
+    # -------------------------------------------------------------------------
+
+    async def _unpack_parallel_results(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Unpack parallel machine output into context fields.
+
+        parallel_raw (from output_to_context) is:
+        {
+            "why_hypothesis_machine": {"content": "..."},
+            "reproduction_machine": {"content": "..."}
+        }
+        """
+        parallel_raw = context.get("parallel_raw") or {}
+
+        why_result = parallel_raw.get("why_hypothesis_machine") or {}
+        repro_result = parallel_raw.get("reproduction_machine") or {}
+
+        # Extract content, handling dict or string
+        if isinstance(why_result, dict):
+            if why_result.get("_error"):
+                logger.error("why_hypothesis_machine failed: %s", why_result["_error"])
+            context["why_hypotheses"] = why_result.get("content") or None
+        else:
+            context["why_hypotheses"] = str(why_result) if why_result else None
+
+        if isinstance(repro_result, dict):
+            if repro_result.get("_error"):
+                logger.error("reproduction_machine failed: %s", repro_result["_error"])
+            context["reproduction_notes"] = repro_result.get("content") or None
+        else:
+            context["reproduction_notes"] = str(repro_result) if repro_result else None
+
+        logger.info(
+            "Unpacked parallel results: why_hypotheses=%s chars, reproduction_notes=%s chars",
+            len(context.get("why_hypotheses") or ""),
+            len(context.get("reproduction_notes") or ""),
+        )
+        return context
+
+    @staticmethod
+    async def _normalize_judge_decision(context: Dict[str, Any]) -> Dict[str, Any]:
+        raw = (context.get("judge_decision_raw") or "").strip().upper()
+        match = re.search(r"\b(PASS|REPAIR|FAIL)\b", raw)
+        context["judge_decision"] = match.group(1) if match else "REPAIR"
+        return context
+
+    @staticmethod
+    async def _set_repair_attempted(context: Dict[str, Any]) -> Dict[str, Any]:
+        context["repair_attempted"] = True
+        return context
+
+    async def _save_analysis_result(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        execution_id = self._norm(context.get("execution_id"))
+        formatted_report = context.get("formatted_report")
+        title = self._norm(context.get("title"))
+        arxiv_id = self._norm(context.get("arxiv_id"))
+
+        result_path = None
+        if formatted_report:
+            try:
+                self._data_dir.mkdir(parents=True, exist_ok=True)
+                safe_id = arxiv_id.replace("/", "_") if arxiv_id else "unknown"
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"{safe_id}_{_slugify_title(title)}_{timestamp}.md"
+                file_path = self._data_dir / filename
+                file_path.write_text(str(formatted_report), encoding="utf-8")
+                result_path = str(file_path)
+                logger.info("Report written: %s", result_path)
+            except Exception as exc:
+                logger.exception("Failed writing report file")
+                context["last_error"] = str(exc)
+
+        if execution_id:
+            conn = self._v2_db()
+            conn.execute(
+                """
+                UPDATE executions
+                SET status = 'done',
+                    result_path = ?,
+                    error = NULL,
+                    updated_at = ?
+                WHERE execution_id = ?
+                """,
+                (result_path, _utc_now_iso(), execution_id),
+            )
+            conn.commit()
+
+        context["result_path"] = result_path
+        return context
+
+    async def _mark_execution_failed(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        execution_id = self._norm(context.get("execution_id"))
+        error = (
+            context.get("last_error")
+            or context.get("error")
+            or "unknown error"
+        )
+
+        if execution_id:
+            conn = self._v2_db()
+            conn.execute(
+                """
+                UPDATE executions
+                SET status = 'failed',
+                    error = ?,
+                    updated_at = ?
+                WHERE execution_id = ?
+                """,
+                (str(error), _utc_now_iso(), execution_id),
+            )
+            conn.commit()
+            logger.warning("Execution %s marked failed: %s", execution_id, error)
+
+        return context
 
     async def _collect_corpus_signals(self, context: Dict[str, Any]) -> Dict[str, Any]:
         conn = self._conn_or_none()
