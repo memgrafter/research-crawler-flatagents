@@ -118,8 +118,40 @@ class DistributedPaperAnalysisHooks(LoggingHooks):
         async with self._lock:
             conn = self._get_conn()
             cur = conn.cursor()
+
+            # Demote stale pending rows for non-latest revisions to avoid wasting
+            # tokens re-summarizing older versions of the same arXiv paper.
             cur.execute(
                 """
+                WITH latest_versions AS (
+                    SELECT arxiv_id, MAX(version) AS max_version
+                    FROM papers
+                    GROUP BY arxiv_id
+                )
+                UPDATE paper_queue
+                SET status = 'backlog',
+                    priority = 0,
+                    worker = NULL,
+                    claimed_by = NULL,
+                    claimed_at = NULL,
+                    started_at = NULL
+                WHERE status = 'pending'
+                  AND paper_id IN (
+                      SELECT p.id
+                      FROM papers p
+                      JOIN latest_versions lv ON lv.arxiv_id = p.arxiv_id
+                      WHERE p.version < lv.max_version
+                  )
+                """
+            )
+
+            cur.execute(
+                """
+                WITH latest_versions AS (
+                    SELECT arxiv_id, MAX(version) AS max_version
+                    FROM papers
+                    GROUP BY arxiv_id
+                )
                 UPDATE paper_queue
                 SET status = 'processing',
                     worker = ?,
@@ -127,9 +159,14 @@ class DistributedPaperAnalysisHooks(LoggingHooks):
                     claimed_at = ?,
                     started_at = ?
                 WHERE id = (
-                    SELECT id FROM paper_queue
-                    WHERE status = 'pending'
-                    ORDER BY priority DESC, enqueued_at ASC
+                    SELECT q.id
+                    FROM paper_queue q
+                    JOIN papers p ON p.id = q.paper_id
+                    JOIN latest_versions lv
+                      ON lv.arxiv_id = p.arxiv_id
+                     AND lv.max_version = p.version
+                    WHERE q.status = 'pending'
+                    ORDER BY q.priority DESC, q.enqueued_at ASC
                     LIMIT 1
                 )
                 RETURNING id, paper_id
