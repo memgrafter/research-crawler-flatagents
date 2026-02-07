@@ -24,7 +24,7 @@ data:
 
     # Cost-control guidance (soft only)
     token_target_key_outcome: "120-180"
-    token_target_why: "350-550"
+    token_target_why: "500-800"
     token_target_reproduction: "220-380"
     token_target_limits: "120-220"
     token_target_open_questions: "120-220"

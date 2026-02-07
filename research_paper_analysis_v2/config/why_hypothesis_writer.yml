@@ -6,10 +6,10 @@ data:
   model: prototype_reasoning
 
   system: |
-    You are a research strategist.
-    Explain why the work might matter using cautious, evidence-anchored hypotheses.
-    Do NOT claim hypotheses are proven.
-    When evidence is thin, make clearly labeled assumptions instead of leaving sections empty.
+    You are a research strategist and systems educator.
+    Explain causal mechanisms, learning prerequisites, and architecture onboarding guidance.
+    Keep claims conditional and evidence-anchored.
+    Do NOT claim mechanisms are proven unless directly stated in the paper.
 
   user: |
     Paper title: {{ input.title }}
@@ -29,43 +29,65 @@ data:
     Corpus neighbors:
     {{ input.corpus_neighbors }}
 
-    Write exactly 3 hypotheses in markdown using this exact template:
+    Write markdown with exactly these sections and headings:
 
-    ### Hypothesis 1
-    - Hypothesis:
-    - Why plausible:
+    ## Why This Works (Mechanism)
+    ### Mechanism 1
+    - Claim:
+    - Mechanism:
+    - Core assumption:
     - Evidence anchors:
       - [abstract]
       - [section]
       - [corpus]
-    - What would invalidate it:
-    - What additional data would strengthen it:
+    - Break condition:
 
-    ### Hypothesis 2
-    - Hypothesis:
-    - Why plausible:
+    ### Mechanism 2
+    - Claim:
+    - Mechanism:
+    - Core assumption:
     - Evidence anchors:
       - [abstract]
       - [section]
       - [corpus]
-    - What would invalidate it:
-    - What additional data would strengthen it:
+    - Break condition:
 
-    ### Hypothesis 3
-    - Hypothesis:
-    - Why plausible:
+    ### Mechanism 3
+    - Claim:
+    - Mechanism:
+    - Core assumption:
     - Evidence anchors:
       - [abstract]
       - [section]
       - [corpus]
-    - What would invalidate it:
-    - What additional data would strengthen it:
+    - Break condition:
+
+    ## Foundational Learning
+    - Concept:
+      - Why needed here:
+      - Quick check question:
+    - Concept:
+      - Why needed here:
+      - Quick check question:
+    - Concept:
+      - Why needed here:
+      - Quick check question:
+
+    ## Architecture Onboarding
+    - Component map:
+    - Critical path:
+    - Design tradeoffs:
+    - Failure signatures:
+    - First 3 experiments:
+      1.
+      2.
+      3.
 
     Rules:
-    - Keep claims conditional and precise.
-    - Each hypothesis must include at least one concrete anchor from [abstract] or [section].
-    - If corpus evidence is weak/missing, state that in the [corpus] anchor line.
-    - You may include plausible inferences, but label uncertain statements as "Assumption:".
+    - Each mechanism must include at least one concrete anchor from [abstract] or [section].
+    - If corpus evidence is weak or missing, say that explicitly in the [corpus] anchor line.
+    - Label uncertain inferences as "Assumption:".
+    - Keep onboarding guidance concrete and actionable for a new engineer.
     - Do not output a single fallback sentence for the full section.
 
     Soft token target: {{ input.token_target }} tokens (guidance only, not strict).
@@ -73,4 +95,4 @@ data:
     Output only the section text. No markdown code fences.
 
 metadata:
-  description: "Writes evidence-anchored why-it-matters hypotheses with explicit uncertainty"
+  description: "Writes mechanism-based why analysis plus foundational learning and onboarding guidance"
