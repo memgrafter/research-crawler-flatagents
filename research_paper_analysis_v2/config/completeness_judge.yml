@@ -18,10 +18,13 @@ data:
     Evaluate this markdown report body for completeness.
 
     REQUIRED HEADERS:
-    - ## Key Outcome Snapshot
+    - ## Method Summary
+    - ## Key Results
     - ## Why It Matters (Hypothesis Ledger)
-    - ## Technical Reproduction Notes
-    - ## Limits, Confidence, and Next Checks
+    - ## Open Questions the Paper Calls Out
+    - ## Limitations
+    - ## Confidence
+    - ## Next Checks
 
     REPORT BODY:
     {{ input.report_body }}
@@ -32,8 +35,8 @@ data:
     - FAIL: unusable output after a repair attempt or severe corruption.
 
     Placeholder guidance:
-    - A section is placeholder-only if it is effectively just one fallback line (e.g., only "Not specified in provided source text.").
-    - A section can still PASS if unknowns are explicitly documented at line-item level within a structured section (bullets/table/subheadings).
+    - A section is placeholder-only if it is effectively just one fallback line.
+    - Next Checks should contain concrete checklist items, not vague prose.
 
     Output exactly one token: PASS or REPAIR or FAIL.
 
