@@ -10,42 +10,47 @@ Built on [FlatAgents](https://github.com/anthropics/flatagents) /
 
 ## Architecture
 
-The pipeline is split into two machines with independent persistence and
-concurrency control:
+The pipeline is split into three machines to maximize expensive model utilization.
+Cheap and expensive calls never share a phase — when pony-alpha is available,
+every API call in flight is pony-alpha.
 
 ```
-prep_machine.yml (cheap model, high concurrency)
-┌──────────────────────────────────────────────────┐
-│  download_pdf → extract_text                     │
-│  → collect_corpus_signals (FTS, no LLM)          │
-│  → write_key_outcome (1 cheap req)               │
-│  → save to v2 executions DB                      │
-└──────────────────────────────────────────────────┘
+prep_machine.yml (cheap model, 1 req)
+┌────────────────────────────────────────────────┐
+│  download_pdf → extract_text                   │
+│  → collect_corpus_signals (FTS, no LLM)        │
+│  → write_key_outcome (1 cheap req)             │
+│  → save to v2 executions DB                    │
+└────────────────────────────────────────────────┘
                     │
                     ▼  status: prepped
-analysis_machine.yml (expensive model, low concurrency)
-┌──────────────────────────────────────────────────┐
-│  parallel_expensive_writers                       │
-│    ├─ why_hypothesis_machine (1 expensive req)    │
-│    └─ reproduction_machine   (1 expensive req)    │
-│  → write_limits_confidence   (1 cheap req)        │
-│  → write_open_questions      (1 expensive req)    │
-│  → derive_terminology_tags   (deterministic)      │
-│  → assemble_report           (1 cheap req)        │
-│  → judge_report              (1 cheap req)        │
-│  → [repair loop: 0-2 cheap reqs]                  │
-│  → prepend_frontmatter                            │
-│  → save report + mark done                        │
-└──────────────────────────────────────────────────┘
+expensive_machine.yml (pony-alpha only, 3 req)
+┌────────────────────────────────────────────────┐
+│  parallel_expensive_writers                    │
+│    ├─ why_hypothesis_machine  (1 pony-alpha)   │
+│    ├─ reproduction_machine    (1 pony-alpha)   │
+│    └─ open_questions_machine  (1 pony-alpha)   │
+│  → save to v2 executions DB                    │
+└────────────────────────────────────────────────┘
+                    │
+                    ▼  status: analyzed
+wrap_machine.yml (cheap model, 3-5 req)
+┌────────────────────────────────────────────────┐
+│  write_limits_confidence   (1 cheap req)       │
+│  → derive_terminology_tags (deterministic)     │
+│  → assemble_report         (1 cheap req)       │
+│  → judge_report            (1 cheap req)       │
+│  → [repair loop: 0-2 cheap reqs]              │
+│  → prepend_frontmatter                         │
+│  → save report + mark done                     │
+└────────────────────────────────────────────────┘
 ```
 
-**Why two machines?** The cheap and expensive models share a daily quota.
-Prep runs at high concurrency to build a buffer. Analysis runs when the
-expensive model is available. This maximizes expensive-model utilization
-without wasting quota on cheap work during availability windows.
-
-Both machines use `persistence: {enabled: true, backend: local}`. If the
-process dies mid-pipeline, restart picks up from the last checkpoint.
+**Why three phases?** The cheap and expensive models share a daily quota.
+By isolating expensive calls into their own phase, the runner can:
+- Dedicate all worker slots to pony-alpha when it's available
+- Batch cheap work (prep + wrap) separately, never wasting expensive availability
+- Build a large prep buffer so expensive work can run continuously
 
 ## Quick start
 
@@ -57,10 +62,16 @@ uv sync
 python run.py --workers 3 --daemon
 ```
 
+Or use the shell wrapper (auto-rebuilds venv):
+
+```bash
+./run.sh --workers 3 --daemon
+```
+
 ## Usage
 
 ```bash
-# Full daemon: seed, prep, and analyze until done or budget exhausted
+# Full daemon: seed, prep, expensive, wrap until done or budget exhausted
 python run.py --workers 5 --daemon
 
 # Prep only: fill buffer with cheap key_outcome calls
@@ -95,15 +106,17 @@ python run.py --workers 5 --budget 500 --poll-interval 15 --daemon
 research_paper_analysis_v2/
 ├── config/
 │   ├── profiles.yml                # Model profiles (cheap + expensive)
-│   ├── prep_machine.yml            # Prep pipeline machine
-│   ├── analysis_machine.yml        # Analysis pipeline machine
+│   ├── prep_machine.yml            # Phase 1: prep pipeline
+│   ├── expensive_machine.yml       # Phase 2: expensive-only pipeline
+│   ├── wrap_machine.yml            # Phase 3: cheap wrap pipeline
 │   ├── why_hypothesis_machine.yml  # Wrapper for parallel execution
 │   ├── reproduction_machine.yml    # Wrapper for parallel execution
+│   ├── open_questions_machine.yml  # Wrapper for parallel execution
 │   ├── key_outcome_writer.yml      # Agent: key outcome (cheap)
 │   ├── why_hypothesis_writer.yml   # Agent: mechanism analysis (expensive)
 │   ├── reproduction_writer.yml     # Agent: reproduction notes (expensive)
-│   ├── limits_confidence_writer.yml # Agent: limits/confidence (cheap)
 │   ├── open_questions_writer.yml   # Agent: open questions (expensive)
+│   ├── limits_confidence_writer.yml # Agent: limits/confidence (cheap)
 │   ├── report_assembler.yml        # Agent: markdown assembly (cheap)
 │   ├── completeness_judge.yml      # Agent: PASS/REPAIR/FAIL (cheap)
 │   ├── targeted_repair.yml         # Agent: fix weak sections (cheap)
@@ -112,14 +125,15 @@ research_paper_analysis_v2/
 │   └── v2_executions.sql           # V2 executions DB schema
 ├── src/research_paper_analysis_v2/
 │   ├── __init__.py
-│   └── hooks.py                    # All hook actions (prep + analysis)
+│   └── hooks.py                    # All hook actions (prep + expensive + wrap)
 ├── data/
 │   ├── v2_executions.sqlite        # Execution tracking DB (auto-created)
 │   ├── checkpoints/                # Machine persistence (auto-created)
 │   ├── *.pdf                       # Downloaded papers
 │   ├── *.txt                       # Extracted text
 │   └── *.md                        # Generated reports
-├── run.py                          # Runner: seed, prep, analysis, resume
+├── run.py                          # Runner: seed, prep, expensive, wrap, resume
+├── run.sh                          # Shell wrapper (uv sync + run.py)
 ├── PLAN.md                         # Original v2 design document
 ├── IMPLEMENTATION_PLAN.md          # Persistence/parallelism migration plan
 ├── OPENROUTER_FREE_WORKERS.md      # Budget planning for OpenRouter free tier
@@ -142,9 +156,9 @@ V2 never writes to the arxiv DB. Override paths with environment variables:
 ### Execution status flow
 
 ```
-pending → prepping → prepped → analyzing → done
-                   ↘          ↘
-                  failed      failed
+pending → prepping → prepped → analyzing → analyzed → wrapping → done
+                   ↘          ↘            ↘
+                  failed      failed      failed
 ```
 
 ### Executions table
@@ -157,34 +171,26 @@ pending → prepping → prepped → analyzing → done
 | `title` | TEXT | Paper title |
 | `authors` | TEXT | Paper authors |
 | `abstract` | TEXT | Paper abstract |
-| `status` | TEXT | pending / prepping / prepped / analyzing / done / failed |
+| `status` | TEXT | pending / prepping / prepped / analyzing / analyzed / wrapping / done / failed |
 | `created_at` | TEXT | ISO timestamp |
 | `updated_at` | TEXT | ISO timestamp |
-| `prep_output` | TEXT | JSON blob: key_outcome, section_text, corpus_signals, etc. |
+| `prep_output` | TEXT | JSON: key_outcome, section_text, corpus_signals, etc. |
+| `expensive_output` | TEXT | JSON: why_hypotheses, reproduction_notes, open_questions |
 | `result_path` | TEXT | Path to output report .md |
 | `error` | TEXT | Error message if failed |
-
-### Daily usage table
-
-| Column | Type | Description |
-|---|---|---|
-| `date` | TEXT PK | YYYY-MM-DD |
-| `total_calls` | INTEGER | Total API calls today |
-| `cheap_calls` | INTEGER | Cheap model calls |
-| `expensive_calls` | INTEGER | Expensive model calls |
 
 ## Models
 
 Configured in `config/profiles.yml`:
 
-| Profile | Model | Used by |
-|---|---|---|
-| `prototype_structured` (cheap) | `openrouter/openai/gpt-oss-120b:free` | key_outcome, limits_confidence, report_assembler, completeness_judge, targeted_repair |
-| `prototype_reasoning` (expensive) | `openrouter/openrouter/pony-alpha` | why_hypothesis, reproduction, open_questions |
+| Profile | Model | Phase | Used by |
+|---|---|---|---|
+| `prototype_structured` (cheap) | `openrouter/openai/gpt-oss-120b:free` | Prep + Wrap | key_outcome, limits_confidence, report_assembler, completeness_judge, targeted_repair |
+| `prototype_reasoning` (expensive) | `openrouter/openrouter/pony-alpha` | Expensive | why_hypothesis, reproduction, open_questions |
 
 ## Persistence and resume
 
-Both machines checkpoint after every state transition. Checkpoints are stored
+All three machines checkpoint after every state transition. Checkpoints are stored
 in `data/checkpoints/{execution_id}/`. If the process dies:
 
 1. Next run finds incomplete checkpoints via `data/checkpoints/*/latest`
@@ -195,8 +201,11 @@ The runner always **resumes before starting new work** (depth-first completion).
 
 ### Stale execution recovery
 
-Executions stuck in `prepping` for >60 minutes or `analyzing` for >120 minutes
-are automatically released back to `pending` or `prepped` respectively.
+| Status | Max age | Falls back to |
+|---|---|---|
+| `prepping` | 60 min | `pending` |
+| `analyzing` | 120 min | `prepped` |
+| `wrapping` | 60 min | `analyzed` |
 
 ## Budget management
 
@@ -204,40 +213,50 @@ The cheap and expensive models share a 1000 req/day OpenRouter quota. The runner
 tracks usage in the `daily_usage` table and stops when the budget is exhausted.
 
 **Request costs per paper:**
-- Prep: 1 cheap request (key_outcome)
-- Analysis: 3 expensive + 3–5 cheap = 6–8 requests
+- Prep: 1 cheap request
+- Expensive: 3 pony-alpha requests (all parallel)
+- Wrap: 3–5 cheap requests
+
+**Budget strategy (maximize pony-alpha):**
+1. Expensive gets worker priority — when prepped papers exist, run pony-alpha first
+2. Wrap clears analyzed papers — fast cheap work, keeps pipeline flowing
+3. Prep fills buffer — builds queue for next expensive burst
+4. `--prep-only` mode fills buffer without burning expensive quota
 
 **Daily capacity at 1000 req budget:**
-- ~40 papers prepped + ~130 papers analyzed (typical)
-- Prep buffer allows immediate analysis starts when expensive model is available
-
-**Budget strategy:**
-- Runner prioritizes analysis over prep when prepped buffer is above `--min-buffer`
-- When buffer is low, runner fills it with cheap prep calls
-- `--prep-only` mode burns budget exclusively on prep (good for end-of-day buffer fill)
+- Prep 50 papers: 50 cheap calls
+- Expensive 50 papers: 150 pony-alpha calls
+- Wrap 50 papers: 150-250 cheap calls
+- Total: ~350-450 calls for 50 complete papers
+- Or: maximize expensive → ~200 pony-alpha calls = ~66 papers through expensive phase
 
 ## Hooks reference
 
-All actions are implemented in `src/research_paper_analysis_v2/hooks.py`:
+All actions in `src/research_paper_analysis_v2/hooks.py`:
 
-### Prep actions
+### Prep actions (prep_machine.yml)
 | Action | Description |
 |---|---|
 | `download_pdf` | Downloads PDF from arxiv to `data/` |
 | `extract_text` | Extracts text from PDF, parses sections and references |
 | `collect_corpus_signals` | FTS neighbor search, FMR scores, citation counts (read-only arxiv DB) |
-| `save_prep_result` | Writes prep output JSON to v2 executions DB, sets status=prepped |
+| `save_prep_result` | Writes prep output JSON to v2 DB, sets status=prepped |
 
-### Analysis actions
+### Expensive actions (expensive_machine.yml)
 | Action | Description |
 |---|---|
-| `unpack_parallel_results` | Unpacks parallel machine output dict into context fields |
+| `unpack_expensive_results` | Unpacks 3 parallel machine outputs into context fields |
+| `save_expensive_result` | Writes expensive output JSON to v2 DB, sets status=analyzed |
+
+### Wrap actions (wrap_machine.yml)
+| Action | Description |
+|---|---|
 | `derive_terminology_tags` | Deterministic tag scoring from paper text, corpus, taxonomy |
 | `prepend_frontmatter_v2` | Generates YAML frontmatter and prepends to report |
 | `normalize_judge_decision` | Extracts PASS/REPAIR/FAIL from judge output |
 | `set_repair_attempted` | Sets repair flag to prevent infinite repair loops |
-| `save_analysis_result` | Writes report .md to disk, sets status=done in v2 DB |
-| `mark_execution_failed` | Sets status=failed with error message in v2 DB |
+| `save_wrap_result` | Writes report .md to disk, sets status=done in v2 DB |
+| `mark_execution_failed` | Sets status=failed with error message (shared across phases) |
 
 ## Report format
 

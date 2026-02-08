@@ -1,20 +1,24 @@
 """Hooks for Research Paper Analysis V2.
 
-Implements custom FlatMachine actions for prep_machine.yml and analysis_machine.yml:
+Implements custom FlatMachine actions for three pipeline phases:
 
-Prep actions:
+Prep actions (prep_machine.yml):
 - download_pdf
 - extract_text
 - collect_corpus_signals
 - save_prep_result
 
-Analysis actions:
-- unpack_parallel_results
+Expensive actions (expensive_machine.yml):
+- unpack_expensive_results
+- save_expensive_result
+- mark_execution_failed
+
+Wrap actions (wrap_machine.yml):
 - derive_terminology_tags
 - prepend_frontmatter_v2
 - normalize_judge_decision
 - set_repair_attempted
-- save_analysis_result
+- save_wrap_result
 - mark_execution_failed
 """
 
@@ -146,13 +150,16 @@ class V2Hooks(LoggingHooks):
             "extract_text": self._extract_text,
             "collect_corpus_signals": self._collect_corpus_signals,
             "save_prep_result": self._save_prep_result,
-            # Analysis actions
-            "unpack_parallel_results": self._unpack_parallel_results,
+            # Expensive actions
+            "unpack_expensive_results": self._unpack_expensive_results,
+            "save_expensive_result": self._save_expensive_result,
+            # Wrap actions
             "derive_terminology_tags": self._derive_terminology_tags,
             "prepend_frontmatter_v2": self._prepend_frontmatter_v2,
             "normalize_judge_decision": self._normalize_judge_decision,
             "set_repair_attempted": self._set_repair_attempted,
-            "save_analysis_result": self._save_analysis_result,
+            "save_wrap_result": self._save_wrap_result,
+            # Shared
             "mark_execution_failed": self._mark_execution_failed,
         }
         handler = handlers.get(action_name)
@@ -278,39 +285,38 @@ class V2Hooks(LoggingHooks):
     # Analysis actions
     # -------------------------------------------------------------------------
 
-    async def _unpack_parallel_results(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Unpack parallel machine output into context fields.
+    async def _unpack_expensive_results(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Unpack parallel expensive machine output into context fields.
 
         parallel_raw (from output_to_context) is:
         {
             "why_hypothesis_machine": {"content": "..."},
-            "reproduction_machine": {"content": "..."}
+            "reproduction_machine": {"content": "..."},
+            "open_questions_machine": {"content": "..."}
         }
         """
         parallel_raw = context.get("parallel_raw") or {}
 
-        why_result = parallel_raw.get("why_hypothesis_machine") or {}
-        repro_result = parallel_raw.get("reproduction_machine") or {}
+        field_map = {
+            "why_hypothesis_machine": "why_hypotheses",
+            "reproduction_machine": "reproduction_notes",
+            "open_questions_machine": "open_questions",
+        }
 
-        # Extract content, handling dict or string
-        if isinstance(why_result, dict):
-            if why_result.get("_error"):
-                logger.error("why_hypothesis_machine failed: %s", why_result["_error"])
-            context["why_hypotheses"] = why_result.get("content") or None
-        else:
-            context["why_hypotheses"] = str(why_result) if why_result else None
-
-        if isinstance(repro_result, dict):
-            if repro_result.get("_error"):
-                logger.error("reproduction_machine failed: %s", repro_result["_error"])
-            context["reproduction_notes"] = repro_result.get("content") or None
-        else:
-            context["reproduction_notes"] = str(repro_result) if repro_result else None
+        for machine_name, context_key in field_map.items():
+            result = parallel_raw.get(machine_name) or {}
+            if isinstance(result, dict):
+                if result.get("_error"):
+                    logger.error("%s failed: %s", machine_name, result["_error"])
+                context[context_key] = result.get("content") or None
+            else:
+                context[context_key] = str(result) if result else None
 
         logger.info(
-            "Unpacked parallel results: why_hypotheses=%s chars, reproduction_notes=%s chars",
+            "Unpacked expensive results: why=%s chars, repro=%s chars, open_q=%s chars",
             len(context.get("why_hypotheses") or ""),
             len(context.get("reproduction_notes") or ""),
+            len(context.get("open_questions") or ""),
         )
         return context
 
@@ -326,7 +332,37 @@ class V2Hooks(LoggingHooks):
         context["repair_attempted"] = True
         return context
 
-    async def _save_analysis_result(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    async def _save_expensive_result(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Save expensive phase output to v2 DB, mark status=analyzed."""
+        execution_id = self._norm(context.get("execution_id"))
+        if not execution_id:
+            logger.warning("No execution_id in context, skipping save_expensive_result")
+            return context
+
+        expensive_output = {
+            "why_hypotheses": context.get("why_hypotheses"),
+            "reproduction_notes": context.get("reproduction_notes"),
+            "open_questions": context.get("open_questions"),
+        }
+
+        conn = self._v2_db()
+        conn.execute(
+            """
+            UPDATE executions
+            SET status = 'analyzed',
+                expensive_output = ?,
+                updated_at = ?
+            WHERE execution_id = ?
+            """,
+            (json.dumps(expensive_output), _utc_now_iso(), execution_id),
+        )
+        conn.commit()
+
+        logger.info("Expensive result saved for execution %s", execution_id)
+        return context
+
+    async def _save_wrap_result(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Save final report to disk, mark status=done in v2 DB."""
         execution_id = self._norm(context.get("execution_id"))
         formatted_report = context.get("formatted_report")
         title = self._norm(context.get("title"))

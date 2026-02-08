@@ -9,10 +9,11 @@ CREATE TABLE IF NOT EXISTS executions (
     authors       TEXT NOT NULL DEFAULT '',
     abstract      TEXT NOT NULL DEFAULT '',
     status        TEXT NOT NULL DEFAULT 'pending',
-        -- pending | prepping | prepped | analyzing | done | failed
+        -- pending | prepping | prepped | analyzing | analyzed | wrapping | done | failed
     created_at    TEXT NOT NULL,
     updated_at    TEXT NOT NULL,
     prep_output   TEXT,                 -- JSON blob: key_outcome, corpus_signals, section_text, etc.
+    expensive_output TEXT,              -- JSON blob: why_hypotheses, reproduction_notes, open_questions
     result_path   TEXT,                 -- path to output report .md
     error         TEXT
 );

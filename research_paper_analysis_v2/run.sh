@@ -1,4 +1,15 @@
 #!/usr/bin/env bash
+# Research Paper Analysis V2 — three-phase pipeline runner.
+#
+# Usage:
+#   ./run.sh --workers 5 --daemon       # Full pipeline: prep + expensive + wrap
+#   ./run.sh --workers 10 --prep-only   # Fill prep buffer only (cheap)
+#   ./run.sh --seed-only                # Seed from arxiv DB only
+#   ./run.sh -h                         # Show all options
+#
+# Automatically rebuilds .venv via `uv sync` on every run.
+# Logs to logs/run_YYYYMMDD_HHMMSS.log.
+
 set -euo pipefail
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
