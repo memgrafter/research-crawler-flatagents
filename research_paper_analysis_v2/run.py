@@ -68,6 +68,9 @@ _ARXIV_DB_PATH: Optional[str] = None
 _LEASE_LOCK = None
 _RUN_INSTANCE_ID = str(uuid.uuid4())
 
+# DB-backed checkpoint persistence singleton
+_CHECKPOINT_BACKEND = None
+
 
 # ---------------------------------------------------------------------------
 # V2 executions DB
@@ -160,6 +163,69 @@ def get_lease_lock():
     )
     logger.info("Using DB lease lock owner=%s ttl=%ss renew=%ss", owner_id, ttl, renew)
     return _LEASE_LOCK
+
+
+def get_checkpoint_backend():
+    """Return process-wide DB-backed checkpoint backend."""
+    global _CHECKPOINT_BACKEND
+    if _CHECKPOINT_BACKEND is not None:
+        return _CHECKPOINT_BACKEND
+
+    from research_paper_analysis_v2.sqlite_checkpoint_backend import SQLiteCheckpointBackend
+
+    db_path = os.environ.get("V2_EXECUTIONS_DB_PATH", str(DATA_DIR / "v2_executions.sqlite"))
+    _CHECKPOINT_BACKEND = SQLiteCheckpointBackend(db_path=db_path)
+    logger.info("Using DB checkpoint backend: %s", db_path)
+    return _CHECKPOINT_BACKEND
+
+
+async def migrate_file_checkpoints_to_db(force: bool = False) -> Dict[str, int]:
+    """Migrate file checkpoints (data/checkpoints) into DB-backed checkpoint tables.
+
+    Safe and idempotent: existing rows are upserted by key, files are not deleted.
+    """
+    stats = {
+        "dirs_seen": 0,
+        "latest_found": 0,
+        "migrated": 0,
+        "missing_snapshot": 0,
+        "read_errors": 0,
+        "skipped_existing_db": 0,
+    }
+
+    conn = get_v2_db()
+    db_latest_count = conn.execute("SELECT COUNT(*) FROM machine_latest").fetchone()[0]
+    if db_latest_count > 0 and not force:
+        stats["skipped_existing_db"] = int(db_latest_count)
+        return stats
+
+    if not CHECKPOINT_DIR.exists():
+        return stats
+
+    backend = get_checkpoint_backend()
+
+    for latest_file in CHECKPOINT_DIR.glob("*/latest"):
+        stats["dirs_seen"] += 1
+        execution_id = latest_file.parent.name
+        try:
+            latest_key = latest_file.read_text(encoding="utf-8").strip()
+            if not latest_key:
+                continue
+            stats["latest_found"] += 1
+
+            snapshot_path = CHECKPOINT_DIR / latest_key
+            if not snapshot_path.exists():
+                stats["missing_snapshot"] += 1
+                continue
+
+            payload = snapshot_path.read_bytes()
+            await backend.save(latest_key, payload)
+            await backend.save(f"{execution_id}/latest", latest_key.encode("utf-8"))
+            stats["migrated"] += 1
+        except Exception:
+            stats["read_errors"] += 1
+
+    return stats
 
 
 # ---------------------------------------------------------------------------
@@ -270,29 +336,31 @@ def increment_daily_usage(conn: sqlite3.Connection, cheap: int = 0, expensive: i
 # ---------------------------------------------------------------------------
 
 def find_incomplete_executions(machine_name: str) -> List[str]:
-    """Scan checkpoint dir for incomplete executions of a given machine."""
-    if not CHECKPOINT_DIR.exists():
+    """Find incomplete executions by querying DB-backed checkpoint tables."""
+    conn = get_v2_db()
+    try:
+        rows = conn.execute(
+            """
+            SELECT mc.execution_id, mc.event, mc.current_state
+            FROM machine_latest ml
+            JOIN machine_checkpoints mc ON mc.checkpoint_key = ml.latest_key
+            WHERE mc.machine_name = ?
+            """,
+            (machine_name,),
+        ).fetchall()
+    except sqlite3.Error as exc:
+        logger.warning("Checkpoint query failed for machine=%s: %s", machine_name, exc)
         return []
 
-    incomplete = []
-    for latest_file in CHECKPOINT_DIR.glob("*/latest"):
-        execution_id = latest_file.parent.name
-        try:
-            key = latest_file.read_text(encoding="utf-8").strip()
-            snapshot_path = CHECKPOINT_DIR / key
-            if not snapshot_path.exists():
-                continue
-            snapshot = json.loads(snapshot_path.read_bytes())
-            if snapshot.get("machine_name") != machine_name:
-                continue
-            if snapshot.get("event") == "machine_end":
-                continue
-            current_state = snapshot.get("current_state", "")
-            if current_state in FINAL_STATES:
-                continue
-            incomplete.append(execution_id)
-        except Exception as exc:
-            logger.warning("Error reading checkpoint %s: %s", execution_id, exc)
+    incomplete: List[str] = []
+    for row in rows:
+        event = row["event"] or ""
+        current_state = row["current_state"] or ""
+        if event == "machine_end":
+            continue
+        if current_state in FINAL_STATES:
+            continue
+        incomplete.append(row["execution_id"])
     return incomplete
 
 
@@ -388,7 +456,6 @@ def release_stale(conn: sqlite3.Connection, status: str, fallback_status: str, m
 
 async def run_prep(execution: Dict[str, Any]) -> bool:
     """Run prep_machine for one execution. Returns True on success."""
-    from flatmachines import LocalFileBackend
     from research_paper_analysis_v2.lease_flatmachine import LeaseFlatMachine
 
     execution_id = execution["execution_id"]
@@ -397,7 +464,7 @@ async def run_prep(execution: Dict[str, Any]) -> bool:
     try:
         machine = LeaseFlatMachine(
             config_file=PREP_CONFIG,
-            persistence=LocalFileBackend(base_dir=str(CHECKPOINT_DIR)),
+            persistence=get_checkpoint_backend(),
             lock=get_lease_lock(),
             _execution_id=execution_id,
         )
@@ -425,7 +492,6 @@ async def run_prep(execution: Dict[str, Any]) -> bool:
 
 async def run_expensive(execution: Dict[str, Any]) -> bool:
     """Run expensive_machine for one execution. Returns True on success."""
-    from flatmachines import LocalFileBackend
     from research_paper_analysis_v2.lease_flatmachine import LeaseFlatMachine
 
     execution_id = execution["execution_id"]
@@ -442,7 +508,7 @@ async def run_expensive(execution: Dict[str, Any]) -> bool:
     try:
         machine = LeaseFlatMachine(
             config_file=EXPENSIVE_CONFIG,
-            persistence=LocalFileBackend(base_dir=str(CHECKPOINT_DIR)),
+            persistence=get_checkpoint_backend(),
             lock=get_lease_lock(),
             _execution_id=execution_id,
         )
@@ -476,7 +542,6 @@ async def run_expensive(execution: Dict[str, Any]) -> bool:
 
 async def run_wrap(execution: Dict[str, Any]) -> bool:
     """Run wrap_machine for one execution. Returns True on success."""
-    from flatmachines import LocalFileBackend
     from research_paper_analysis_v2.lease_flatmachine import LeaseFlatMachine
 
     execution_id = execution["execution_id"]
@@ -494,7 +559,7 @@ async def run_wrap(execution: Dict[str, Any]) -> bool:
     try:
         machine = LeaseFlatMachine(
             config_file=WRAP_CONFIG,
-            persistence=LocalFileBackend(base_dir=str(CHECKPOINT_DIR)),
+            persistence=get_checkpoint_backend(),
             lock=get_lease_lock(),
             _execution_id=execution_id,
         )
@@ -533,7 +598,6 @@ async def run_wrap(execution: Dict[str, Any]) -> bool:
 
 async def resume_machine(execution_id: str, machine_name: str, config_file: str) -> bool:
     """Resume an incomplete machine execution from checkpoint."""
-    from flatmachines import LocalFileBackend
     from research_paper_analysis_v2.lease_flatmachine import LeaseFlatMachine
 
     logger.info("RESUME %s (%s)", execution_id, machine_name)
@@ -541,7 +605,7 @@ async def resume_machine(execution_id: str, machine_name: str, config_file: str)
     try:
         machine = LeaseFlatMachine(
             config_file=config_file,
-            persistence=LocalFileBackend(base_dir=str(CHECKPOINT_DIR)),
+            persistence=get_checkpoint_backend(),
             lock=get_lease_lock(),
         )
         result = await machine.execute(resume_from=execution_id)
@@ -794,9 +858,32 @@ async def main() -> None:
     parser.add_argument("-p", "--poll-interval", type=float, default=10.0, help="Daemon poll interval (seconds)")
     parser.add_argument("--prep-only", action="store_true", help="Only run prep phase")
     parser.add_argument("--seed-only", action="store_true", help="Only seed from arxiv DB")
+    parser.add_argument("--migrate-checkpoints-only", action="store_true", help="Only migrate file checkpoints into DB tables")
+    parser.add_argument("--force-checkpoint-migration", action="store_true", help="Force checkpoint migration even if DB already has latest rows")
     parser.add_argument("--min-buffer", type=int, default=20, help="Min prepped papers before prioritizing analysis")
     parser.add_argument("--seed-limit", type=int, default=500, help="Max papers to seed per pass")
     args = parser.parse_args()
+
+    mig = await migrate_file_checkpoints_to_db(force=args.force_checkpoint_migration)
+    if any(mig.values()):
+        logger.info(
+            "Checkpoint migration: dirs=%d latest=%d migrated=%d missing_snapshot=%d read_errors=%d skipped_existing_db=%d",
+            mig["dirs_seen"],
+            mig["latest_found"],
+            mig["migrated"],
+            mig["missing_snapshot"],
+            mig["read_errors"],
+            mig["skipped_existing_db"],
+        )
+
+    if args.migrate_checkpoints_only:
+        print(
+            "Checkpoint migration: "
+            f"dirs={mig['dirs_seen']} latest={mig['latest_found']} migrated={mig['migrated']} "
+            f"missing_snapshot={mig['missing_snapshot']} read_errors={mig['read_errors']} "
+            f"skipped_existing_db={mig['skipped_existing_db']}"
+        )
+        return
 
     if args.seed_only:
         count = seed(limit=args.seed_limit)
