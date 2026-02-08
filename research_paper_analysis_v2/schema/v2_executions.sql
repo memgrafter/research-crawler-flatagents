@@ -40,3 +40,22 @@ CREATE TABLE IF NOT EXISTS execution_leases (
 );
 
 CREATE INDEX IF NOT EXISTS idx_execution_leases_until ON execution_leases(lease_until);
+
+-- DB-backed checkpoints (replaces high-churn checkpoint temp files when enabled).
+CREATE TABLE IF NOT EXISTS machine_checkpoints (
+    checkpoint_key TEXT PRIMARY KEY,
+    execution_id   TEXT NOT NULL,
+    machine_name   TEXT,
+    event          TEXT,
+    current_state  TEXT,
+    snapshot_json  BLOB NOT NULL,
+    created_at     TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_mc_execution_created ON machine_checkpoints(execution_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS machine_latest (
+    execution_id TEXT PRIMARY KEY,
+    latest_key   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL
+);

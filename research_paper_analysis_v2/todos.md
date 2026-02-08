@@ -20,6 +20,14 @@
 - [ ] (Project) Escape/quote hyphenated FTS terms in `collect_corpus_signals` query builder.
   Current MATCH strings can raise `no such column: ...` and force LIKE fallback.
 
+## Project runtime priorities
+
+- [ ] PRIORITY NEXT: Move checkpoint persistence from files to v2 SQLite DB.
+  Target: remove high-volume `.step_*.tmp` / `.latest.tmp` checkpoint writes and reduce FD pressure.
+
+- [ ] Follow-up: Move execution lock state from file locks to v2 SQLite lease rows.
+  Keep separate from checkpoint migration; do only if needed after checkpoint DB migration.
+
 ## Rate limit headers
 
 2026-02-07 16:59:30 - flatagents.flatagent - WARNING - LLM call failed: RateLimitError - litellm.RateLimitError: RateLimitError: OpenrouterException - {"error"

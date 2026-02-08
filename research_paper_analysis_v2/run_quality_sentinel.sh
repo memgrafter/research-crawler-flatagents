@@ -56,8 +56,10 @@ if [[ "$DAEMON" == true ]]; then
   fi
 
   printf -v WATCH_CMD '%q ' "${CMD[@]}"
-  echo "Starting quality sentinel daemon mode via watch (interval=${INTERVAL}s)"
-  exec watch -n "$INTERVAL" "$WATCH_CMD"
+  WATCH_BODY="mkdir -p \"$HOME/code/analysis/v2\"; find \"$SCRIPT_DIR/data\" -maxdepth 1 -type f -name '*.pdf' -delete; if compgen -G \"$SCRIPT_DIR/data/*.md\" > /dev/null; then cp \"$SCRIPT_DIR\"/data/*.md \"$HOME/code/analysis/v2/\"; ${WATCH_CMD}; else echo 'No markdown files found in $SCRIPT_DIR/data'; fi"
+  printf -v WATCH_BASH_CMD 'bash -lc %q' "$WATCH_BODY"
+  echo "Starting quality sentinel daemon mode via watch (interval=${INTERVAL}s, deleting data/*.pdf and copying data/*.md to ~/code/analysis/v2 each tick)"
+  exec watch -n "$INTERVAL" "$WATCH_BASH_CMD"
 fi
 
 exec "${CMD[@]}"
