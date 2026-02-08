@@ -9,6 +9,15 @@ data:
     writer: ./why_hypothesis_writer.yml
 
   context:
+    # Capture inbound machine input into local context (required for agent input mapping)
+    title: input.title
+    key_outcome: input.key_outcome
+    abstract: input.abstract
+    paper_text: input.paper_text
+    corpus_signals: input.corpus_signals
+    corpus_neighbors: input.corpus_neighbors
+    token_target_why: input.token_target_why
+
     result: null
 
   states:
@@ -23,13 +32,13 @@ data:
         type: retry
         backoffs: [2, 8, 16, 35]
       input:
-        title: input.title
-        key_outcome: input.key_outcome
-        abstract: input.abstract
-        section_text: input.section_text
-        corpus_signals: input.corpus_signals
-        corpus_neighbors: input.corpus_neighbors
-        token_target: input.token_target_why
+        title: context.title
+        key_outcome: context.key_outcome
+        abstract: context.abstract
+        paper_text: context.paper_text
+        corpus_signals: context.corpus_signals
+        corpus_neighbors: context.corpus_neighbors
+        token_target: context.token_target_why
       output_to_context:
         result: output.content
       transitions:

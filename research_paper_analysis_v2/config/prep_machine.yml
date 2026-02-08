@@ -29,7 +29,7 @@ data:
     token_target_key_outcome: "120-180"
 
     # Populated by actions
-    section_text: null
+    paper_text: null
     reference_count: 0
     corpus_signals: null
     corpus_neighbors: null
@@ -72,7 +72,7 @@ data:
         title: context.title
         authors: context.authors
         abstract: context.abstract
-        section_text: context.section_text
+        paper_text: context.paper_text
         token_target: context.token_target_key_outcome
       output_to_context:
         key_outcome: output.content
@@ -91,7 +91,7 @@ data:
         arxiv_id: context.arxiv_id
         execution_id: context.execution_id
         key_outcome: context.key_outcome
-        section_text: context.section_text
+        paper_text: context.paper_text
         reference_count: context.reference_count
         corpus_signals: context.corpus_signals
         corpus_neighbors: context.corpus_neighbors

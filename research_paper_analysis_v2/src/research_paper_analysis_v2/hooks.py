@@ -214,26 +214,8 @@ class V2Hooks(LoggingHooks):
             full_text = "\n\n".join(pages)
             txt_path.write_text(full_text, encoding="utf-8")
 
-        # Extract sections
-        section_pattern = r"\n(\d+(?:\.\d+)?)\s+([A-Z][^\n]{3,80})\n"
-        section_matches = list(re.finditer(section_pattern, full_text))
-
-        sections: List[str] = []
-        for i, match in enumerate(section_matches[:6]):
-            section_num = match.group(1)
-            section_title = match.group(2).strip()
-            start_pos = match.end()
-
-            if i + 1 < len(section_matches):
-                end_pos = section_matches[i + 1].start()
-            else:
-                ref_match = re.search(r"\nReferences\s*\n", full_text[start_pos:], re.IGNORECASE)
-                end_pos = start_pos + ref_match.start() if ref_match else len(full_text)
-
-            content = full_text[start_pos:end_pos].strip()[:3000]
-            sections.append(f"=== {section_num} {section_title} ===\n{content}")
-
-        section_text = "\n\n".join(sections)
+        # Keep full extracted paper text as the primary downstream payload.
+        paper_text = full_text
 
         # Extract references
         ref_match = re.search(r"\nReferences\s*\n(.*)", full_text, re.DOTALL | re.IGNORECASE)
@@ -243,7 +225,7 @@ class V2Hooks(LoggingHooks):
             refs = re.split(r"\n\s*\[?\d+\]?\s*", ref_text)
             references = [r.strip()[:200] for r in refs if len(r.strip()) > 20][:40]
 
-        context["section_text"] = section_text
+        context["paper_text"] = paper_text
         context["reference_count"] = len(references)
         return context
 
@@ -259,7 +241,7 @@ class V2Hooks(LoggingHooks):
 
         prep_output = {
             "key_outcome": context.get("key_outcome"),
-            "section_text": context.get("section_text"),
+            "paper_text": context.get("paper_text"),
             "reference_count": context.get("reference_count"),
             "corpus_signals": context.get("corpus_signals"),
             "corpus_neighbors": context.get("corpus_neighbors"),
@@ -638,7 +620,19 @@ class V2Hooks(LoggingHooks):
                 continue
             seen.add(term)
             terms.append(term)
-        return " OR ".join(terms[:12])
+
+        # Quote all terms to avoid FTS5 parsing hyphenated tokens as column/expression syntax.
+        # Example: unquoted `in-context` can raise `no such column: context`.
+        quoted_terms = [self._quote_fts_term(t) for t in terms[:12]]
+        quoted_terms = [t for t in quoted_terms if t]
+        return " OR ".join(quoted_terms)
+
+    @staticmethod
+    def _quote_fts_term(term: str) -> str:
+        t = (term or "").strip()
+        if not t:
+            return ""
+        return '"' + t.replace('"', '""') + '"'
 
     def _keywords(self, text: str, max_terms: int = 12) -> List[str]:
         tokens = re.findall(r"[a-zA-Z][a-zA-Z0-9\-]{2,}", (text or "").lower())
@@ -655,10 +649,10 @@ class V2Hooks(LoggingHooks):
     async def _derive_terminology_tags(self, context: Dict[str, Any]) -> Dict[str, Any]:
         title = self._norm(context.get("title"))
         abstract = self._norm(context.get("abstract"))
-        section_text = self._norm(context.get("section_text"))
+        paper_text_raw = self._norm(context.get("paper_text"))
         neighbors = context.get("corpus_neighbors") or []
 
-        paper_text = "\n".join([title, abstract, section_text]).lower()
+        paper_text = "\n".join([title, abstract, paper_text_raw]).lower()
         neighbor_text = "\n".join(
             [f"{n.get('title', '')}\n{n.get('abstract', '')}" for n in neighbors if isinstance(n, dict)]
         ).lower()
@@ -708,7 +702,7 @@ class V2Hooks(LoggingHooks):
 
         # Backfill with salient paper keywords if map hits are sparse.
         if len(scores) < 8:
-            for token in self._keywords(title + " " + abstract + " " + section_text, max_terms=20):
+            for token in self._keywords(title + " " + abstract + " " + paper_text_raw, max_terms=20):
                 tag = self._slugify(token)
                 if tag in scores or len(tag) < 4:
                     continue

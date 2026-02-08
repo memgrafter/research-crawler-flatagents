@@ -9,6 +9,13 @@ data:
     writer: ./open_questions_writer.yml
 
   context:
+    # Capture inbound machine input into local context (required for agent input mapping)
+    title: input.title
+    key_outcome: input.key_outcome
+    abstract: input.abstract
+    paper_text: input.paper_text
+    token_target_open_questions: input.token_target_open_questions
+
     result: null
 
   states:
@@ -23,11 +30,11 @@ data:
         type: retry
         backoffs: [2, 8, 16, 35]
       input:
-        title: input.title
-        key_outcome: input.key_outcome
-        abstract: input.abstract
-        section_text: input.section_text
-        token_target: input.token_target_open_questions
+        title: context.title
+        key_outcome: context.key_outcome
+        abstract: context.abstract
+        paper_text: context.paper_text
+        token_target: context.token_target_open_questions
       output_to_context:
         result: output.content
       transitions:

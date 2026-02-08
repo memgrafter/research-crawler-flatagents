@@ -16,3 +16,14 @@
 
 - [ ] Config `spec_version: "1.0.0"` triggers validation warning with SDK 1.1.0.
   Non-blocking but noisy.
+
+- [ ] (Project) Escape/quote hyphenated FTS terms in `collect_corpus_signals` query builder.
+  Current MATCH strings can raise `no such column: ...` and force LIKE fallback.
+
+## Rate limit headers
+
+2026-02-07 16:59:30 - flatagents.flatagent - WARNING - LLM call failed: RateLimitError - litellm.RateLimitError: RateLimitError: OpenrouterException - {"error"
+:{"message":"Rate limit exceed (status=429) | headers={}
+2026-02-07 16:59:30 - flatagents.monitor.report-assembler - INFO - Agent report-assembler completed in 483.78ms - success                                      2026-02-07 16:59:30 - flatmachines.execution - WARNING - Attempt 1/4 failed: RateLimitError: litellm.RateLimitError: RateLimitError: OpenrouterException - {"er
+ror":{"message":"Rate limit exceeded: free-models-per-min. ","code":429,"metadata":{"headers":{"X-RateLimit-Limit":"20","X-RateLimit-Remaining":"0","X-RateLimit-Reset":"1770512400000"},"provider_name":null}},"user_id":"user_2eilynMFgVA7gHumgjhRl9EEl0E"}
+2026-02-07 16:59:30 - flatmachines.execution - INFO - Retrying in 1.8s...

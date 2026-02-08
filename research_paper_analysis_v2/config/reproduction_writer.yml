@@ -21,8 +21,8 @@ data:
 
     Reference count: {{ input.reference_count }}
 
-    Section text:
-    {{ input.section_text }}
+    Paper text:
+    {{ input.paper_text }}
 
     Write markdown with these headings in this order:
 

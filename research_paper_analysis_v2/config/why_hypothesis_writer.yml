@@ -20,8 +20,8 @@ data:
     Abstract:
     {{ input.abstract }}
 
-    Section text:
-    {{ input.section_text }}
+    Paper text:
+    {{ input.paper_text }}
 
     Corpus signals:
     {{ input.corpus_signals }}

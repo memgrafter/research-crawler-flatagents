@@ -27,7 +27,7 @@ data:
     abstract: input.abstract
 
     # From prep phase
-    section_text: input.section_text
+    paper_text: input.paper_text
     reference_count: input.reference_count
     key_outcome: input.key_outcome
     corpus_signals: input.corpus_signals
@@ -62,7 +62,7 @@ data:
         title: context.title
         key_outcome: context.key_outcome
         abstract: context.abstract
-        section_text: context.section_text
+        paper_text: context.paper_text
         reference_count: context.reference_count
         corpus_signals: context.corpus_signals
         corpus_neighbors: context.corpus_neighbors
