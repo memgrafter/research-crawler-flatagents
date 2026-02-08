@@ -1,8 +1,14 @@
 #!/usr/bin/env -S uv run python
-"""V2 runner: two-phase pipeline with budget-aware scheduling.
+"""V2 runner: three-phase pipeline with budget-aware scheduling.
 
-Phase 1 (prep): download PDF, extract text, corpus signals, key_outcome (cheap model)
-Phase 2 (analysis): parallel expensive writers, limits, open questions, assemble, judge (expensive model)
+Phase 1 (prep):      download PDF, extract text, corpus signals, key_outcome  [cheap model]
+Phase 2 (expensive): parallel why_hypothesis + reproduction + open_questions   [pony-alpha only]
+Phase 3 (wrap):      limits, assembly, judge, repair, frontmatter             [cheap model]
+
+Budget strategy: maximize expensive model utilization.
+- Expensive gets priority for worker slots when prepped papers are available.
+- Wrap clears analyzed papers quickly (all cheap).
+- Prep builds buffer during cheap-only windows.
 
 Usage:
     python run.py                           # One pass, default settings
@@ -37,11 +43,17 @@ DATA_DIR = PROJECT_ROOT / "data"
 CHECKPOINT_DIR = DATA_DIR / "checkpoints"
 SCHEMA_FILE = PROJECT_ROOT / "schema" / "v2_executions.sql"
 
-# Known req counts per machine
-PREP_REQS_PER_PAPER = 1       # key_outcome only
-ANALYSIS_REQS_PER_PAPER = 7   # 3 expensive + 3 cheap + ~1 repair avg
+# Known req counts per phase
+PREP_REQS = 1        # key_outcome only
+EXPENSIVE_REQS = 3   # why + reproduction + open_questions (all pony-alpha)
+WRAP_REQS = 4        # limits + assembler + judge + ~1 repair avg
 
 FINAL_STATES = {"done", "failed", "no_work_final", "failed_incomplete"}
+
+# Machine config paths
+PREP_CONFIG = str(CONFIG_DIR / "prep_machine.yml")
+EXPENSIVE_CONFIG = str(CONFIG_DIR / "expensive_machine.yml")
+WRAP_CONFIG = str(CONFIG_DIR / "wrap_machine.yml")
 
 
 # ---------------------------------------------------------------------------
@@ -58,7 +70,18 @@ def get_v2_db() -> sqlite3.Connection:
     conn.execute("PRAGMA busy_timeout = 10000")
     if SCHEMA_FILE.exists():
         conn.executescript(SCHEMA_FILE.read_text(encoding="utf-8"))
+    # Migrate: add expensive_output if missing (existing DBs)
+    _migrate_v2_db(conn)
     return conn
+
+
+def _migrate_v2_db(conn: sqlite3.Connection) -> None:
+    """Add columns introduced after initial schema."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(executions)").fetchall()}
+    if "expensive_output" not in cols:
+        conn.execute("ALTER TABLE executions ADD COLUMN expensive_output TEXT")
+        conn.commit()
+        logger.info("Migrated: added expensive_output column")
 
 
 def get_arxiv_db() -> Optional[sqlite3.Connection]:
@@ -134,7 +157,7 @@ def seed(limit: int = 500) -> int:
             if v2_conn.total_changes:
                 seeded += 1
         except sqlite3.IntegrityError:
-            pass  # Already seeded (UNIQUE on arxiv_id)
+            pass
 
     v2_conn.commit()
     arxiv_conn.close()
@@ -216,7 +239,7 @@ def find_incomplete_executions(machine_name: str) -> List[str]:
 # ---------------------------------------------------------------------------
 
 def claim_for_prep(conn: sqlite3.Connection, limit: int) -> List[Dict[str, Any]]:
-    """Atomically claim pending → prepping. Returns list of execution dicts."""
+    """Atomically claim pending → prepping."""
     now = datetime.now(timezone.utc).isoformat()
     rows = conn.execute(
         """
@@ -236,8 +259,8 @@ def claim_for_prep(conn: sqlite3.Connection, limit: int) -> List[Dict[str, Any]]
     return [dict(r) for r in rows]
 
 
-def claim_for_analysis(conn: sqlite3.Connection, limit: int) -> List[Dict[str, Any]]:
-    """Atomically claim prepped → analyzing. Returns list of execution dicts with prep_output."""
+def claim_for_expensive(conn: sqlite3.Connection, limit: int) -> List[Dict[str, Any]]:
+    """Atomically claim prepped → analyzing. Returns dicts with prep_output."""
     now = datetime.now(timezone.utc).isoformat()
     rows = conn.execute(
         """
@@ -250,6 +273,27 @@ def claim_for_analysis(conn: sqlite3.Connection, limit: int) -> List[Dict[str, A
             LIMIT ?
         )
         RETURNING execution_id, arxiv_id, paper_id, title, authors, abstract, prep_output
+        """,
+        (now, limit),
+    ).fetchall()
+    conn.commit()
+    return [dict(r) for r in rows]
+
+
+def claim_for_wrap(conn: sqlite3.Connection, limit: int) -> List[Dict[str, Any]]:
+    """Atomically claim analyzed → wrapping. Returns dicts with prep_output + expensive_output."""
+    now = datetime.now(timezone.utc).isoformat()
+    rows = conn.execute(
+        """
+        UPDATE executions
+        SET status = 'wrapping', updated_at = ?
+        WHERE execution_id IN (
+            SELECT execution_id FROM executions
+            WHERE status = 'analyzed'
+            ORDER BY created_at ASC
+            LIMIT ?
+        )
+        RETURNING execution_id, arxiv_id, paper_id, title, authors, abstract, prep_output, expensive_output
         """,
         (now, limit),
     ).fetchall()
@@ -285,13 +329,11 @@ async def run_prep(execution: Dict[str, Any]) -> bool:
     from flatmachines import FlatMachine, LocalFileBackend
 
     execution_id = execution["execution_id"]
-    config_path = str(CONFIG_DIR / "prep_machine.yml")
-
     logger.info("PREP %s: %s", execution["arxiv_id"], execution["title"][:60])
 
     try:
         machine = FlatMachine(
-            config_file=config_path,
+            config_file=PREP_CONFIG,
             persistence=LocalFileBackend(base_dir=str(CHECKPOINT_DIR)),
             _execution_id=execution_id,
         )
@@ -313,45 +355,28 @@ async def run_prep(execution: Dict[str, Any]) -> bool:
 
     except Exception as exc:
         logger.exception("PREP EXCEPTION %s: %s", execution["arxiv_id"], exc)
-        # Mark failed in DB so it doesn't get stuck in 'prepping'
-        try:
-            conn = get_v2_db()
-            conn.execute(
-                "UPDATE executions SET status = 'failed', error = ?, updated_at = ? WHERE execution_id = ?",
-                (str(exc), datetime.now(timezone.utc).isoformat(), execution_id),
-            )
-            conn.commit()
-        except Exception:
-            pass
+        _mark_failed_in_db(execution_id, str(exc))
         return False
 
 
-async def run_analysis(execution: Dict[str, Any]) -> bool:
-    """Run analysis_machine for one execution. Returns True on success."""
+async def run_expensive(execution: Dict[str, Any]) -> bool:
+    """Run expensive_machine for one execution. Returns True on success."""
     from flatmachines import FlatMachine, LocalFileBackend
 
     execution_id = execution["execution_id"]
     arxiv_id = execution["arxiv_id"]
-    config_path = str(CONFIG_DIR / "analysis_machine.yml")
 
-    # Parse prep_output
-    prep_output_raw = execution.get("prep_output")
-    if not prep_output_raw:
-        logger.error("ANALYSIS SKIP %s: no prep_output", arxiv_id)
-        return False
-    try:
-        prep_output = json.loads(prep_output_raw) if isinstance(prep_output_raw, str) else prep_output_raw
-    except json.JSONDecodeError:
-        logger.error("ANALYSIS SKIP %s: invalid prep_output JSON", arxiv_id)
+    prep_output = _parse_json_field(execution.get("prep_output"), "prep_output")
+    if not prep_output:
+        logger.error("EXPENSIVE SKIP %s: no prep_output", arxiv_id)
         return False
 
     source_url = f"https://arxiv.org/abs/{arxiv_id}" if arxiv_id else ""
-
-    logger.info("ANALYSIS %s: %s", arxiv_id, execution["title"][:60])
+    logger.info("EXPENSIVE %s: %s", arxiv_id, execution["title"][:60])
 
     try:
         machine = FlatMachine(
-            config_file=config_path,
+            config_file=EXPENSIVE_CONFIG,
             persistence=LocalFileBackend(base_dir=str(CHECKPOINT_DIR)),
             _execution_id=execution_id,
         )
@@ -371,23 +396,70 @@ async def run_analysis(execution: Dict[str, Any]) -> bool:
         })
 
         if result.get("error"):
-            logger.error("ANALYSIS FAILED %s: %s", arxiv_id, result["error"])
+            logger.error("EXPENSIVE FAILED %s: %s", arxiv_id, result["error"])
             return False
 
-        logger.info("ANALYSIS DONE %s", arxiv_id)
+        logger.info("EXPENSIVE DONE %s", arxiv_id)
         return True
 
     except Exception as exc:
-        logger.exception("ANALYSIS EXCEPTION %s: %s", arxiv_id, exc)
-        try:
-            conn = get_v2_db()
-            conn.execute(
-                "UPDATE executions SET status = 'failed', error = ?, updated_at = ? WHERE execution_id = ?",
-                (str(exc), datetime.now(timezone.utc).isoformat(), execution_id),
-            )
-            conn.commit()
-        except Exception:
-            pass
+        logger.exception("EXPENSIVE EXCEPTION %s: %s", arxiv_id, exc)
+        _mark_failed_in_db(execution_id, str(exc))
+        return False
+
+
+async def run_wrap(execution: Dict[str, Any]) -> bool:
+    """Run wrap_machine for one execution. Returns True on success."""
+    from flatmachines import FlatMachine, LocalFileBackend
+
+    execution_id = execution["execution_id"]
+    arxiv_id = execution["arxiv_id"]
+
+    prep_output = _parse_json_field(execution.get("prep_output"), "prep_output")
+    expensive_output = _parse_json_field(execution.get("expensive_output"), "expensive_output")
+    if not prep_output or not expensive_output:
+        logger.error("WRAP SKIP %s: missing prep_output or expensive_output", arxiv_id)
+        return False
+
+    source_url = f"https://arxiv.org/abs/{arxiv_id}" if arxiv_id else ""
+    logger.info("WRAP %s: %s", arxiv_id, execution["title"][:60])
+
+    try:
+        machine = FlatMachine(
+            config_file=WRAP_CONFIG,
+            persistence=LocalFileBackend(base_dir=str(CHECKPOINT_DIR)),
+            _execution_id=execution_id,
+        )
+        result = await machine.execute(input={
+            "execution_id": execution_id,
+            "arxiv_id": arxiv_id,
+            "paper_id": execution["paper_id"],
+            "source_url": source_url,
+            "title": execution["title"],
+            "authors": execution["authors"],
+            "abstract": execution["abstract"],
+            # From prep
+            "section_text": prep_output.get("section_text", ""),
+            "reference_count": prep_output.get("reference_count", 0),
+            "key_outcome": prep_output.get("key_outcome", ""),
+            "corpus_signals": prep_output.get("corpus_signals"),
+            "corpus_neighbors": prep_output.get("corpus_neighbors"),
+            # From expensive
+            "why_hypotheses": expensive_output.get("why_hypotheses", ""),
+            "reproduction_notes": expensive_output.get("reproduction_notes", ""),
+            "open_questions": expensive_output.get("open_questions", ""),
+        })
+
+        if result.get("error"):
+            logger.error("WRAP FAILED %s: %s", arxiv_id, result["error"])
+            return False
+
+        logger.info("WRAP DONE %s", arxiv_id)
+        return True
+
+    except Exception as exc:
+        logger.exception("WRAP EXCEPTION %s: %s", arxiv_id, exc)
+        _mark_failed_in_db(execution_id, str(exc))
         return False
 
 
@@ -417,6 +489,36 @@ async def resume_machine(execution_id: str, machine_name: str, config_file: str)
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _parse_json_field(raw: Any, field_name: str) -> Optional[Dict[str, Any]]:
+    """Parse a JSON text field from the DB into a dict."""
+    if not raw:
+        return None
+    if isinstance(raw, dict):
+        return raw
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        logger.error("Invalid JSON in %s", field_name)
+        return None
+
+
+def _mark_failed_in_db(execution_id: str, error: str) -> None:
+    """Mark an execution as failed directly (for exception paths)."""
+    try:
+        conn = get_v2_db()
+        conn.execute(
+            "UPDATE executions SET status = 'failed', error = ?, updated_at = ? WHERE execution_id = ?",
+            (error, datetime.now(timezone.utc).isoformat(), execution_id),
+        )
+        conn.commit()
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # Main run logic
 # ---------------------------------------------------------------------------
 
@@ -426,13 +528,25 @@ async def run_once(
     prep_only: bool = False,
     min_buffer: int = 20,
 ) -> Dict[str, int]:
-    """Run one pass: resume incomplete, then schedule new work."""
-    conn = get_v2_db()
-    stats = {"prep_started": 0, "prep_resumed": 0, "analysis_started": 0, "analysis_resumed": 0}
+    """Run one pass: resume incomplete, then schedule new work.
 
-    # Release stale claims (stuck > 60 min)
+    Priority order (maximize expensive model utilization):
+    1. Resume incomplete machines (any phase)
+    2. Start expensive work (pony-alpha — highest priority for new work)
+    3. Start wrap work (cheap, clears pipeline)
+    4. Start prep work (cheap, builds buffer)
+    """
+    conn = get_v2_db()
+    stats = {
+        "prep_started": 0, "prep_resumed": 0,
+        "expensive_started": 0, "expensive_resumed": 0,
+        "wrap_started": 0, "wrap_resumed": 0,
+    }
+
+    # Release stale claims
     release_stale(conn, "prepping", "pending", max_age_minutes=60)
     release_stale(conn, "analyzing", "prepped", max_age_minutes=120)
+    release_stale(conn, "wrapping", "analyzed", max_age_minutes=60)
 
     usage = get_daily_usage(conn)
     remaining_budget = max(daily_budget - usage["total"], 0)
@@ -448,69 +562,85 @@ async def run_once(
 
     pending = status_counts.get("pending", 0)
     prepped = status_counts.get("prepped", 0)
+    analyzed = status_counts.get("analyzed", 0)
     prepping = status_counts.get("prepping", 0)
     analyzing = status_counts.get("analyzing", 0)
+    wrapping = status_counts.get("wrapping", 0)
 
     logger.info(
-        "Status: pending=%d prepping=%d prepped=%d analyzing=%d | budget=%d/%d",
-        pending, prepping, prepped, analyzing, remaining_budget, daily_budget,
+        "Status: pending=%d prepping=%d prepped=%d analyzing=%d analyzed=%d wrapping=%d | budget=%d/%d",
+        pending, prepping, prepped, analyzing, analyzed, wrapping, remaining_budget, daily_budget,
     )
 
     sem = asyncio.Semaphore(max_workers)
     tasks: List[asyncio.Task] = []
+    budget_used = 0
 
     async def run_with_sem(coro):
         async with sem:
             return await coro
 
-    # 1. Resume incomplete analysis machines first (depth-first)
-    incomplete_analysis = find_incomplete_executions("analysis-pipeline")
-    for exec_id in incomplete_analysis[:max_workers]:
-        task = asyncio.create_task(run_with_sem(
-            resume_machine(exec_id, "analysis-pipeline", str(CONFIG_DIR / "analysis_machine.yml"))
-        ))
-        tasks.append(task)
-        stats["analysis_resumed"] += 1
+    # 1. Resume incomplete machines (depth-first completion)
+    for machine_name, config_file in [
+        ("expensive-pipeline", EXPENSIVE_CONFIG),
+        ("wrap-pipeline", WRAP_CONFIG),
+        ("prep-pipeline", PREP_CONFIG),
+    ]:
+        stat_key = machine_name.split("-")[0] + "_resumed"
+        for exec_id in find_incomplete_executions(machine_name)[:max_workers]:
+            if len(tasks) >= max_workers:
+                break
+            task = asyncio.create_task(run_with_sem(
+                resume_machine(exec_id, machine_name, config_file)
+            ))
+            tasks.append(task)
+            stats[stat_key] += 1
 
-    # 2. Resume incomplete prep machines
-    incomplete_prep = find_incomplete_executions("prep-pipeline")
-    for exec_id in incomplete_prep[:max_workers]:
-        task = asyncio.create_task(run_with_sem(
-            resume_machine(exec_id, "prep-pipeline", str(CONFIG_DIR / "prep_machine.yml"))
-        ))
-        tasks.append(task)
-        stats["prep_resumed"] += 1
-
-    # 3. Start new analysis if we have prepped papers and budget
-    if not prep_only:
-        analysis_budget = remaining_budget - (prepped * PREP_REQS_PER_PAPER if prepped < min_buffer else 0)
-        analysis_slots = min(
+    if prep_only:
+        # Skip expensive and wrap, only do prep
+        pass
+    else:
+        # 2. Expensive work — highest priority for new slots (pure pony-alpha)
+        expensive_slots = min(
             max(max_workers - len(tasks), 0),
-            max(analysis_budget // ANALYSIS_REQS_PER_PAPER, 0),
             prepped,
+            max((remaining_budget - budget_used) // EXPENSIVE_REQS, 0),
         )
-        if analysis_slots > 0:
-            claimed = claim_for_analysis(conn, analysis_slots)
+        if expensive_slots > 0:
+            claimed = claim_for_expensive(conn, expensive_slots)
             for ex in claimed:
-                task = asyncio.create_task(run_with_sem(run_analysis(ex)))
+                task = asyncio.create_task(run_with_sem(run_expensive(ex)))
                 tasks.append(task)
-                stats["analysis_started"] += 1
+                stats["expensive_started"] += 1
+                budget_used += EXPENSIVE_REQS
 
-    # 4. Fill prep buffer if needed
-    prep_slots = max(max_workers - len(tasks), 0)
-    if prep_slots > 0 and pending > 0:
-        prep_budget_remaining = remaining_budget - (stats["analysis_started"] * ANALYSIS_REQS_PER_PAPER)
-        prep_count = min(
-            prep_slots,
-            pending,
-            max(prep_budget_remaining // PREP_REQS_PER_PAPER, 0),
+        # 3. Wrap work — clear analyzed backlog (all cheap, fast)
+        wrap_slots = min(
+            max(max_workers - len(tasks), 0),
+            analyzed,
+            max((remaining_budget - budget_used) // WRAP_REQS, 0),
         )
-        if prep_count > 0:
-            claimed = claim_for_prep(conn, prep_count)
+        if wrap_slots > 0:
+            claimed = claim_for_wrap(conn, wrap_slots)
             for ex in claimed:
-                task = asyncio.create_task(run_with_sem(run_prep(ex)))
+                task = asyncio.create_task(run_with_sem(run_wrap(ex)))
                 tasks.append(task)
-                stats["prep_started"] += 1
+                stats["wrap_started"] += 1
+                budget_used += WRAP_REQS
+
+    # 4. Prep work — fill buffer with remaining slots
+    prep_slots = min(
+        max(max_workers - len(tasks), 0),
+        pending,
+        max((remaining_budget - budget_used) // PREP_REQS, 0),
+    )
+    if prep_slots > 0:
+        claimed = claim_for_prep(conn, prep_slots)
+        for ex in claimed:
+            task = asyncio.create_task(run_with_sem(run_prep(ex)))
+            tasks.append(task)
+            stats["prep_started"] += 1
+            budget_used += PREP_REQS
 
     # Wait for all
     if tasks:
@@ -520,9 +650,11 @@ async def run_once(
                 logger.error("Task %d failed: %s", i, result)
 
     # Update daily usage estimate
-    total_cheap = (stats["prep_started"] + stats["prep_resumed"]) * PREP_REQS_PER_PAPER
-    total_expensive = (stats["analysis_started"] + stats["analysis_resumed"]) * 3  # 3 expensive per paper
-    total_cheap += (stats["analysis_started"] + stats["analysis_resumed"]) * 4     # 4 cheap in analysis
+    total_cheap = (
+        (stats["prep_started"] + stats["prep_resumed"]) * PREP_REQS
+        + (stats["wrap_started"] + stats["wrap_resumed"]) * WRAP_REQS
+    )
+    total_expensive = (stats["expensive_started"] + stats["expensive_resumed"]) * EXPENSIVE_REQS
     increment_daily_usage(conn, cheap=total_cheap, expensive=total_expensive)
 
     return stats
@@ -537,7 +669,6 @@ async def run_daemon(
 ) -> None:
     """Daemon loop: seed → run → sleep → repeat."""
     while True:
-        # Seed from arxiv DB
         seed()
 
         stats = await run_once(
@@ -549,9 +680,10 @@ async def run_daemon(
 
         total_work = sum(stats.values())
         logger.info(
-            "Pass complete: prep=%d/%d analysis=%d/%d",
+            "Pass complete: prep=%d/%d expensive=%d/%d wrap=%d/%d",
             stats["prep_started"], stats["prep_resumed"],
-            stats["analysis_started"], stats["analysis_resumed"],
+            stats["expensive_started"], stats["expensive_resumed"],
+            stats["wrap_started"], stats["wrap_resumed"],
         )
 
         # Check if all work is done
@@ -615,7 +747,8 @@ async def main() -> None:
             min_buffer=args.min_buffer,
         )
         print(f"Prep: {stats['prep_started']} new, {stats['prep_resumed']} resumed")
-        print(f"Analysis: {stats['analysis_started']} new, {stats['analysis_resumed']} resumed")
+        print(f"Expensive: {stats['expensive_started']} new, {stats['expensive_resumed']} resumed")
+        print(f"Wrap: {stats['wrap_started']} new, {stats['wrap_resumed']} resumed")
 
 
 if __name__ == "__main__":

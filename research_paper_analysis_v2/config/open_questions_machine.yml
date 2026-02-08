@@ -1,0 +1,42 @@
+spec: flatmachine
+spec_version: "1.0.0"
+
+data:
+  name: open-questions
+  profiles: ./profiles.yml
+
+  agents:
+    writer: ./open_questions_writer.yml
+
+  context:
+    result: null
+
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: write
+
+    write:
+      agent: writer
+      execution:
+        type: retry
+        backoffs: [2, 8, 16, 35]
+      input:
+        title: input.title
+        key_outcome: input.key_outcome
+        abstract: input.abstract
+        section_text: input.section_text
+        token_target: input.token_target_open_questions
+      output_to_context:
+        result: output.content
+      transitions:
+        - to: done
+
+    done:
+      type: final
+      output:
+        content: context.result
+
+metadata:
+  description: "Wrapper machine for open_questions_writer (expensive model)"

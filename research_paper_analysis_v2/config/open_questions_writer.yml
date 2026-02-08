@@ -8,7 +8,8 @@ data:
   system: |
     You extract open research questions from the paper.
     Prioritize questions explicitly called out by the authors.
-    If explicit questions are sparse, add cautious inferred questions from limitations.
+    If explicit questions are sparse, infer cautious questions from
+    methodological limitations or unstated assumptions in the paper.
 
   user: |
     Paper title: {{ input.title }}
@@ -21,9 +22,6 @@ data:
 
     Section text:
     {{ input.section_text }}
-
-    Limits/confidence:
-    {{ input.limits_confidence }}
 
     Write markdown with exactly 3-5 questions.
     Use this format for each:
