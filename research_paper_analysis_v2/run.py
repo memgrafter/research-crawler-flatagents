@@ -24,8 +24,10 @@ import asyncio
 import json
 import logging
 import os
+import socket
 import sqlite3
 import uuid
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -55,24 +57,48 @@ PREP_CONFIG = str(CONFIG_DIR / "prep_machine.yml")
 EXPENSIVE_CONFIG = str(CONFIG_DIR / "expensive_machine.yml")
 WRAP_CONFIG = str(CONFIG_DIR / "wrap_machine.yml")
 
+# Process-wide SQLite connection singletons (reduces FD churn at high concurrency).
+_DB_SINGLETON_LOCK = threading.Lock()
+_V2_DB_CONN: Optional[sqlite3.Connection] = None
+_V2_DB_PATH: Optional[str] = None
+_ARXIV_DB_CONN: Optional[sqlite3.Connection] = None
+_ARXIV_DB_PATH: Optional[str] = None
+
+# DB-backed execution lease lock singleton
+_LEASE_LOCK = None
+_RUN_INSTANCE_ID = str(uuid.uuid4())
+
 
 # ---------------------------------------------------------------------------
 # V2 executions DB
 # ---------------------------------------------------------------------------
 
 def get_v2_db() -> sqlite3.Connection:
+    global _V2_DB_CONN, _V2_DB_PATH
+
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     db_path = os.environ.get("V2_EXECUTIONS_DB_PATH", str(DATA_DIR / "v2_executions.sqlite"))
-    conn = sqlite3.connect(db_path, check_same_thread=False, timeout=30.0)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode = WAL")
-    conn.execute("PRAGMA synchronous = NORMAL")
-    conn.execute("PRAGMA busy_timeout = 10000")
-    if SCHEMA_FILE.exists():
-        conn.executescript(SCHEMA_FILE.read_text(encoding="utf-8"))
-    # Migrate: add expensive_output if missing (existing DBs)
-    _migrate_v2_db(conn)
-    return conn
+
+    if _V2_DB_CONN is not None and _V2_DB_PATH == db_path:
+        return _V2_DB_CONN
+
+    with _DB_SINGLETON_LOCK:
+        if _V2_DB_CONN is not None and _V2_DB_PATH == db_path:
+            return _V2_DB_CONN
+
+        conn = sqlite3.connect(db_path, check_same_thread=False, timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
+        conn.execute("PRAGMA busy_timeout = 10000")
+        if SCHEMA_FILE.exists():
+            conn.executescript(SCHEMA_FILE.read_text(encoding="utf-8"))
+        # Migrate: add expensive_output if missing (existing DBs)
+        _migrate_v2_db(conn)
+
+        _V2_DB_CONN = conn
+        _V2_DB_PATH = db_path
+        return _V2_DB_CONN
 
 
 def _migrate_v2_db(conn: sqlite3.Connection) -> None:
@@ -85,6 +111,8 @@ def _migrate_v2_db(conn: sqlite3.Connection) -> None:
 
 
 def get_arxiv_db() -> Optional[sqlite3.Connection]:
+    global _ARXIV_DB_CONN, _ARXIV_DB_PATH
+
     db_path = os.environ.get(
         "ARXIV_DB_PATH",
         str(PROJECT_ROOT.parent / "arxiv_crawler" / "data" / "arxiv.sqlite"),
@@ -92,11 +120,46 @@ def get_arxiv_db() -> Optional[sqlite3.Connection]:
     if not Path(db_path).exists():
         logger.warning("Arxiv DB not found: %s", db_path)
         return None
-    conn = sqlite3.connect(db_path, check_same_thread=False, timeout=30.0)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode = WAL")
-    conn.execute("PRAGMA busy_timeout = 10000")
-    return conn
+
+    if _ARXIV_DB_CONN is not None and _ARXIV_DB_PATH == db_path:
+        return _ARXIV_DB_CONN
+
+    with _DB_SINGLETON_LOCK:
+        if _ARXIV_DB_CONN is not None and _ARXIV_DB_PATH == db_path:
+            return _ARXIV_DB_CONN
+
+        conn = sqlite3.connect(db_path, check_same_thread=False, timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA busy_timeout = 10000")
+
+        _ARXIV_DB_CONN = conn
+        _ARXIV_DB_PATH = db_path
+        return _ARXIV_DB_CONN
+
+
+def get_lease_lock():
+    """Return process-wide DB-backed execution lease lock."""
+    global _LEASE_LOCK
+    if _LEASE_LOCK is not None:
+        return _LEASE_LOCK
+
+    from research_paper_analysis_v2.sqlite_lease_lock import SQLiteLeaseLock
+
+    db_path = os.environ.get("V2_EXECUTIONS_DB_PATH", str(DATA_DIR / "v2_executions.sqlite"))
+    owner_id = f"{socket.gethostname()}:{os.getpid()}:{_RUN_INSTANCE_ID}"
+    ttl = int(os.environ.get("RPA_V2_LEASE_TTL_SECONDS", "300"))
+    renew = int(os.environ.get("RPA_V2_LEASE_RENEW_SECONDS", "100"))
+
+    _LEASE_LOCK = SQLiteLeaseLock(
+        db_path=db_path,
+        owner_id=owner_id,
+        phase="machine",
+        ttl_seconds=ttl,
+        renew_interval_seconds=renew,
+    )
+    logger.info("Using DB lease lock owner=%s ttl=%ss renew=%ss", owner_id, ttl, renew)
+    return _LEASE_LOCK
 
 
 # ---------------------------------------------------------------------------
@@ -160,7 +223,6 @@ def seed(limit: int = 500) -> int:
             pass
 
     v2_conn.commit()
-    arxiv_conn.close()
 
     if seeded:
         logger.info("Seeded %d new executions from arxiv DB", seeded)
@@ -326,15 +388,17 @@ def release_stale(conn: sqlite3.Connection, status: str, fallback_status: str, m
 
 async def run_prep(execution: Dict[str, Any]) -> bool:
     """Run prep_machine for one execution. Returns True on success."""
-    from flatmachines import FlatMachine, LocalFileBackend
+    from flatmachines import LocalFileBackend
+    from research_paper_analysis_v2.lease_flatmachine import LeaseFlatMachine
 
     execution_id = execution["execution_id"]
     logger.info("PREP %s: %s", execution["arxiv_id"], execution["title"][:60])
 
     try:
-        machine = FlatMachine(
+        machine = LeaseFlatMachine(
             config_file=PREP_CONFIG,
             persistence=LocalFileBackend(base_dir=str(CHECKPOINT_DIR)),
+            lock=get_lease_lock(),
             _execution_id=execution_id,
         )
         result = await machine.execute(input={
@@ -361,7 +425,8 @@ async def run_prep(execution: Dict[str, Any]) -> bool:
 
 async def run_expensive(execution: Dict[str, Any]) -> bool:
     """Run expensive_machine for one execution. Returns True on success."""
-    from flatmachines import FlatMachine, LocalFileBackend
+    from flatmachines import LocalFileBackend
+    from research_paper_analysis_v2.lease_flatmachine import LeaseFlatMachine
 
     execution_id = execution["execution_id"]
     arxiv_id = execution["arxiv_id"]
@@ -375,9 +440,10 @@ async def run_expensive(execution: Dict[str, Any]) -> bool:
     logger.info("EXPENSIVE %s: %s", arxiv_id, execution["title"][:60])
 
     try:
-        machine = FlatMachine(
+        machine = LeaseFlatMachine(
             config_file=EXPENSIVE_CONFIG,
             persistence=LocalFileBackend(base_dir=str(CHECKPOINT_DIR)),
+            lock=get_lease_lock(),
             _execution_id=execution_id,
         )
         result = await machine.execute(input={
@@ -410,7 +476,8 @@ async def run_expensive(execution: Dict[str, Any]) -> bool:
 
 async def run_wrap(execution: Dict[str, Any]) -> bool:
     """Run wrap_machine for one execution. Returns True on success."""
-    from flatmachines import FlatMachine, LocalFileBackend
+    from flatmachines import LocalFileBackend
+    from research_paper_analysis_v2.lease_flatmachine import LeaseFlatMachine
 
     execution_id = execution["execution_id"]
     arxiv_id = execution["arxiv_id"]
@@ -425,9 +492,10 @@ async def run_wrap(execution: Dict[str, Any]) -> bool:
     logger.info("WRAP %s: %s", arxiv_id, execution["title"][:60])
 
     try:
-        machine = FlatMachine(
+        machine = LeaseFlatMachine(
             config_file=WRAP_CONFIG,
             persistence=LocalFileBackend(base_dir=str(CHECKPOINT_DIR)),
+            lock=get_lease_lock(),
             _execution_id=execution_id,
         )
         result = await machine.execute(input={
@@ -465,14 +533,16 @@ async def run_wrap(execution: Dict[str, Any]) -> bool:
 
 async def resume_machine(execution_id: str, machine_name: str, config_file: str) -> bool:
     """Resume an incomplete machine execution from checkpoint."""
-    from flatmachines import FlatMachine, LocalFileBackend
+    from flatmachines import LocalFileBackend
+    from research_paper_analysis_v2.lease_flatmachine import LeaseFlatMachine
 
     logger.info("RESUME %s (%s)", execution_id, machine_name)
 
     try:
-        machine = FlatMachine(
+        machine = LeaseFlatMachine(
             config_file=config_file,
             persistence=LocalFileBackend(base_dir=str(CHECKPOINT_DIR)),
+            lock=get_lease_lock(),
         )
         result = await machine.execute(resume_from=execution_id)
 
@@ -514,8 +584,13 @@ def _mark_failed_in_db(execution_id: str, error: str) -> None:
             (error, datetime.now(timezone.utc).isoformat(), execution_id),
         )
         conn.commit()
-    except Exception:
-        pass
+    except Exception as mark_exc:
+        logger.exception(
+            "Failed to mark execution %s as failed (original error: %s): %s",
+            execution_id,
+            error,
+            mark_exc,
+        )
 
 
 # ---------------------------------------------------------------------------

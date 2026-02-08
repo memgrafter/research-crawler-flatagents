@@ -27,3 +27,16 @@ CREATE TABLE IF NOT EXISTS daily_usage (
     cheap_calls    INTEGER NOT NULL DEFAULT 0,
     expensive_calls INTEGER NOT NULL DEFAULT 0
 );
+
+-- DB-backed execution leases (replaces file lock state when enabled by runner).
+CREATE TABLE IF NOT EXISTS execution_leases (
+    execution_id   TEXT PRIMARY KEY,
+    owner_id       TEXT NOT NULL,
+    phase          TEXT NOT NULL,
+    lease_until    INTEGER NOT NULL,    -- unix epoch seconds
+    fencing_token  INTEGER NOT NULL DEFAULT 1,
+    acquired_at    TEXT NOT NULL,
+    updated_at     TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_execution_leases_until ON execution_leases(lease_until);

@@ -24,11 +24,13 @@ Wrap actions (wrap_machine.yml):
 
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import os
 import re
 import sqlite3
+import threading
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -49,6 +51,19 @@ STOPWORDS = {
     "paper", "approach", "method", "model", "models", "results", "analysis", "study",
     "new", "improving", "improved", "towards", "through", "within", "without", "between",
 }
+
+# Process-wide SQLite connection caches keyed by DB path.
+_CONN_CACHE_LOCK = threading.Lock()
+_ARXIV_CONN_CACHE: Dict[str, sqlite3.Connection] = {}
+_V2_CONN_CACHE: Dict[str, sqlite3.Connection] = {}
+_V2_WRITE_LOCK: Optional[asyncio.Lock] = None
+
+
+def _get_v2_write_lock() -> asyncio.Lock:
+    global _V2_WRITE_LOCK
+    if _V2_WRITE_LOCK is None:
+        _V2_WRITE_LOCK = asyncio.Lock()
+    return _V2_WRITE_LOCK
 
 
 def _utc_now_iso() -> str:
@@ -103,41 +118,65 @@ class V2Hooks(LoggingHooks):
 
     def _conn_or_none(self) -> Optional[sqlite3.Connection]:
         """Arxiv DB connection (read-only for corpus signals)."""
-        if self._conn is not None:
-            return self._conn
         path = Path(self._db_path)
         if not path.exists():
             logger.warning("DB not found for corpus signals: %s", path)
             return None
+
+        key = str(path.resolve())
+        cached = _ARXIV_CONN_CACHE.get(key)
+        if cached is not None:
+            self._conn = cached
+            return cached
+
         timeout_s = float(os.environ.get("RPA_V2_SQLITE_TIMEOUT_SECONDS", "30"))
         busy_timeout_ms = int(os.environ.get("RPA_V2_SQLITE_BUSY_TIMEOUT_MS", "10000"))
 
-        conn = sqlite3.connect(str(path), check_same_thread=False, timeout=max(timeout_s, 1.0))
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys = ON")
-        conn.execute(f"PRAGMA busy_timeout = {max(busy_timeout_ms, 1)}")
-        conn.execute("PRAGMA journal_mode = WAL")
-        conn.execute("PRAGMA synchronous = NORMAL")
-        self._conn = conn
-        return conn
+        with _CONN_CACHE_LOCK:
+            cached = _ARXIV_CONN_CACHE.get(key)
+            if cached is not None:
+                self._conn = cached
+                return cached
+
+            conn = sqlite3.connect(str(path), check_same_thread=False, timeout=max(timeout_s, 1.0))
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA foreign_keys = ON")
+            conn.execute(f"PRAGMA busy_timeout = {max(busy_timeout_ms, 1)}")
+            conn.execute("PRAGMA journal_mode = WAL")
+            conn.execute("PRAGMA synchronous = NORMAL")
+            _ARXIV_CONN_CACHE[key] = conn
+            self._conn = conn
+            return conn
 
     def _v2_db(self) -> sqlite3.Connection:
         """V2 executions DB connection (read-write, owned by v2)."""
-        if self._v2_conn is not None:
-            return self._v2_conn
         path = Path(self._v2_db_path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(path), check_same_thread=False, timeout=30.0)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode = WAL")
-        conn.execute("PRAGMA synchronous = NORMAL")
-        conn.execute("PRAGMA busy_timeout = 10000")
-        # Auto-create schema
-        schema_file = self._project_root / "schema" / "v2_executions.sql"
-        if schema_file.exists():
-            conn.executescript(schema_file.read_text(encoding="utf-8"))
-        self._v2_conn = conn
-        return conn
+        key = str(path.resolve())
+
+        cached = _V2_CONN_CACHE.get(key)
+        if cached is not None:
+            self._v2_conn = cached
+            return cached
+
+        with _CONN_CACHE_LOCK:
+            cached = _V2_CONN_CACHE.get(key)
+            if cached is not None:
+                self._v2_conn = cached
+                return cached
+
+            conn = sqlite3.connect(str(path), check_same_thread=False, timeout=30.0)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode = WAL")
+            conn.execute("PRAGMA synchronous = NORMAL")
+            conn.execute("PRAGMA busy_timeout = 10000")
+            # Auto-create schema
+            schema_file = self._project_root / "schema" / "v2_executions.sql"
+            if schema_file.exists():
+                conn.executescript(schema_file.read_text(encoding="utf-8"))
+            _V2_CONN_CACHE[key] = conn
+            self._v2_conn = conn
+            return conn
 
     # -------------------------------------------------------------------------
     # Action router
@@ -247,18 +286,19 @@ class V2Hooks(LoggingHooks):
             "corpus_neighbors": context.get("corpus_neighbors"),
         }
 
-        conn = self._v2_db()
-        conn.execute(
-            """
-            UPDATE executions
-            SET status = 'prepped',
-                prep_output = ?,
-                updated_at = ?
-            WHERE execution_id = ?
-            """,
-            (json.dumps(prep_output), _utc_now_iso(), execution_id),
-        )
-        conn.commit()
+        async with _get_v2_write_lock():
+            conn = self._v2_db()
+            conn.execute(
+                """
+                UPDATE executions
+                SET status = 'prepped',
+                    prep_output = ?,
+                    updated_at = ?
+                WHERE execution_id = ?
+                """,
+                (json.dumps(prep_output), _utc_now_iso(), execution_id),
+            )
+            conn.commit()
 
         logger.info("Prep result saved for execution %s", execution_id)
         return context
@@ -327,18 +367,19 @@ class V2Hooks(LoggingHooks):
             "open_questions": context.get("open_questions"),
         }
 
-        conn = self._v2_db()
-        conn.execute(
-            """
-            UPDATE executions
-            SET status = 'analyzed',
-                expensive_output = ?,
-                updated_at = ?
-            WHERE execution_id = ?
-            """,
-            (json.dumps(expensive_output), _utc_now_iso(), execution_id),
-        )
-        conn.commit()
+        async with _get_v2_write_lock():
+            conn = self._v2_db()
+            conn.execute(
+                """
+                UPDATE executions
+                SET status = 'analyzed',
+                    expensive_output = ?,
+                    updated_at = ?
+                WHERE execution_id = ?
+                """,
+                (json.dumps(expensive_output), _utc_now_iso(), execution_id),
+            )
+            conn.commit()
 
         logger.info("Expensive result saved for execution %s", execution_id)
         return context
@@ -366,19 +407,20 @@ class V2Hooks(LoggingHooks):
                 context["last_error"] = str(exc)
 
         if execution_id:
-            conn = self._v2_db()
-            conn.execute(
-                """
-                UPDATE executions
-                SET status = 'done',
-                    result_path = ?,
-                    error = NULL,
-                    updated_at = ?
-                WHERE execution_id = ?
-                """,
-                (result_path, _utc_now_iso(), execution_id),
-            )
-            conn.commit()
+            async with _get_v2_write_lock():
+                conn = self._v2_db()
+                conn.execute(
+                    """
+                    UPDATE executions
+                    SET status = 'done',
+                        result_path = ?,
+                        error = NULL,
+                        updated_at = ?
+                    WHERE execution_id = ?
+                    """,
+                    (result_path, _utc_now_iso(), execution_id),
+                )
+                conn.commit()
 
         context["result_path"] = result_path
         return context
@@ -392,18 +434,19 @@ class V2Hooks(LoggingHooks):
         )
 
         if execution_id:
-            conn = self._v2_db()
-            conn.execute(
-                """
-                UPDATE executions
-                SET status = 'failed',
-                    error = ?,
-                    updated_at = ?
-                WHERE execution_id = ?
-                """,
-                (str(error), _utc_now_iso(), execution_id),
-            )
-            conn.commit()
+            async with _get_v2_write_lock():
+                conn = self._v2_db()
+                conn.execute(
+                    """
+                    UPDATE executions
+                    SET status = 'failed',
+                        error = ?,
+                        updated_at = ?
+                    WHERE execution_id = ?
+                    """,
+                    (str(error), _utc_now_iso(), execution_id),
+                )
+                conn.commit()
             logger.warning("Execution %s marked failed: %s", execution_id, error)
 
         return context
