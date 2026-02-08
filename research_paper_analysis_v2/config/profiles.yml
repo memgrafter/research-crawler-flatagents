@@ -5,7 +5,9 @@ data:
   model_profiles:
     # Use fully-qualified LiteLLM model ids to avoid provider/name assembly ambiguity.
     prototype_structured:
-      name: openrouter/openai/gpt-oss-120b:free
+      #name: openrouter/openai/gpt-oss-120b:free
+      #name: openrouter/upstage/solar-pro-3:free # unlimited, tool calling king?
+      name: openrouter/arcee-ai/trinity-large-preview:free # way higher rpm
       temperature: 1.0
 
     prototype_reasoning:

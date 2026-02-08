@@ -20,8 +20,8 @@ data:
     Abstract:
     {{ input.abstract }}
 
-    Section text:
-    {{ input.section_text }}
+    Paper text:
+    {{ input.paper_text }}
 
     Write markdown with exactly 3-5 questions.
     Use this format for each:

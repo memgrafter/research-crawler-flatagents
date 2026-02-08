@@ -18,8 +18,8 @@ data:
     Abstract:
     {{ input.abstract }}
 
-    Section text:
-    {{ input.section_text }}
+    Paper text:
+    {{ input.paper_text }}
 
     Write a concise key outcome snapshot.
     Soft token target: {{ input.token_target }} tokens (guidance only, not strict).

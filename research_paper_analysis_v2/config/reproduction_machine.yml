@@ -9,6 +9,14 @@ data:
     writer: ./reproduction_writer.yml
 
   context:
+    # Capture inbound machine input into local context (required for agent input mapping)
+    title: input.title
+    key_outcome: input.key_outcome
+    abstract: input.abstract
+    paper_text: input.paper_text
+    reference_count: input.reference_count
+    token_target_reproduction: input.token_target_reproduction
+
     result: null
 
   states:
@@ -23,12 +31,12 @@ data:
         type: retry
         backoffs: [2, 8, 16, 35]
       input:
-        title: input.title
-        key_outcome: input.key_outcome
-        abstract: input.abstract
-        section_text: input.section_text
-        reference_count: input.reference_count
-        token_target: input.token_target_reproduction
+        title: context.title
+        key_outcome: context.key_outcome
+        abstract: context.abstract
+        paper_text: context.paper_text
+        reference_count: context.reference_count
+        token_target: context.token_target_reproduction
       output_to_context:
         result: output.content
       transitions:

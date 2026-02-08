@@ -388,7 +388,7 @@ async def run_expensive(execution: Dict[str, Any]) -> bool:
             "title": execution["title"],
             "authors": execution["authors"],
             "abstract": execution["abstract"],
-            "section_text": prep_output.get("section_text", ""),
+            "paper_text": prep_output.get("paper_text") or prep_output.get("section_text", ""),
             "reference_count": prep_output.get("reference_count", 0),
             "key_outcome": prep_output.get("key_outcome", ""),
             "corpus_signals": prep_output.get("corpus_signals"),
@@ -439,7 +439,7 @@ async def run_wrap(execution: Dict[str, Any]) -> bool:
             "authors": execution["authors"],
             "abstract": execution["abstract"],
             # From prep
-            "section_text": prep_output.get("section_text", ""),
+            "paper_text": prep_output.get("paper_text") or prep_output.get("section_text", ""),
             "reference_count": prep_output.get("reference_count", 0),
             "key_outcome": prep_output.get("key_outcome", ""),
             "corpus_signals": prep_output.get("corpus_signals"),
