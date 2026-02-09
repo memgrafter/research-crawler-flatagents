@@ -191,7 +191,9 @@ def main() -> int:
         print(f"ERROR: data directory not found: {data_dir}")
         return 1
 
-    md_files = sorted(data_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)[: args.latest]
+    all_md_files = sorted(data_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+    md_total_count = len(all_md_files)
+    md_files = all_md_files[: args.latest]
     if not md_files:
         print(f"ERROR: no markdown files found in {data_dir}")
         return 1
@@ -227,6 +229,7 @@ def main() -> int:
         )
 
     summary: Dict[str, object] = {
+        "md_total_count": md_total_count,
         "files_scanned": len(results),
         "files_missing_sections": len(files_missing_sections),
         "files_with_fallback": len(files_with_fallback),
@@ -238,6 +241,7 @@ def main() -> int:
         "per_file": [asdict(r) for r in results],
     }
 
+    print(f"md_total_count={summary['md_total_count']}")
     print(f"files_scanned={summary['files_scanned']}")
     print(
         "section_complete="
