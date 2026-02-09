@@ -56,9 +56,9 @@ if [[ "$DAEMON" == true ]]; then
   fi
 
   printf -v WATCH_CMD '%q ' "${CMD[@]}"
-  WATCH_BODY="mkdir -p \"$HOME/code/analysis/v2\"; find \"$SCRIPT_DIR/data\" -maxdepth 1 -type f -name '*.pdf' -delete; if compgen -G \"$SCRIPT_DIR/data/*.md\" > /dev/null; then cp \"$SCRIPT_DIR\"/data/*.md \"$HOME/code/analysis/v2/\"; ${WATCH_CMD}; else echo 'No markdown files found in $SCRIPT_DIR/data'; fi"
+  WATCH_BODY="mkdir -p \"$HOME/code/analysis/research_analysis_v2\"; find \"$SCRIPT_DIR/data\" -maxdepth 1 -type f -name '*.pdf' -delete; if compgen -G \"$SCRIPT_DIR/data/*.md\" > /dev/null; then cp \"$SCRIPT_DIR\"/data/*.md \"$HOME/code/analysis/research_analysis_v2/\"; ${WATCH_CMD}; else echo 'No markdown files found in $SCRIPT_DIR/data'; fi; pid=\$(pgrep -f '.venv/bin/python3 run.py -d' | head -1 || true); if [[ -n \"\$pid\" ]]; then echo \"fd_pid=\$pid\"; echo -n 'fd_total='; lsof -p \"\$pid\" | wc -l; echo -n 'fd_tcp_est='; lsof -nP -a -p \"\$pid\" -iTCP -sTCP:ESTABLISHED | wc -l; echo -n 'fd_checkpoint_tmp='; lsof -nP -a -p \"\$pid\" | awk 'NR>1 && \$9 ~ /data\\/checkpoints\\/.*\\.tmp\$/ {c++} END {print c+0}'; echo -n 'fd_locks='; lsof -nP -a -p \"\$pid\" | awk 'NR>1 && \$9 ~ /\\.locks\\// {c++} END {print c+0}'; fi"
   printf -v WATCH_BASH_CMD 'bash -lc %q' "$WATCH_BODY"
-  echo "Starting quality sentinel daemon mode via watch (interval=${INTERVAL}s, deleting data/*.pdf and copying data/*.md to ~/code/analysis/v2 each tick)"
+  echo "Starting quality sentinel daemon mode via watch (interval=${INTERVAL}s, deleting data/*.pdf and copying data/*.md to ~/code/analysis/research_analysis_v2 each tick)"
   exec watch -n "$INTERVAL" "$WATCH_BASH_CMD"
 fi
 
