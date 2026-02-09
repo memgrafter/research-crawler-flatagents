@@ -17,70 +17,73 @@
 ## Budget optimization
 
 - [ ] Track actual request counts per machine run (not estimates)
-  - Currently using fixed estimates (1 req/prep, 7 req/analysis).
-  - Hook could increment `daily_usage` after each agent call via `on_state_exit`.
-  - Would enable more accurate budget remaining calculations.
+  - Currently using fixed estimates per phase.
+  - Hook-level accounting would make budget remaining accurate.
 
 - [ ] End-of-day prep burst
-  - When approaching end of day and budget remains, switch to `--prep-only` to
-    fill buffer for next day's analysis.
-  - Could be a cron job or a time-aware check in the daemon loop.
+  - When nearing day end with remaining budget, switch to `--prep-only`.
 
 - [ ] Expensive model availability tracking
-  - Track success/failure of expensive model calls in v2 DB.
-  - Use rolling window to detect sustained unavailability.
-  - When unavailable, automatically switch to prep-only mode.
-  - When available again, resume analysis.
+  - Track expensive model failures in v2 DB.
+  - Auto-shift to prep-only during sustained expensive-model outage.
 
 ## Rate limiting
 
 - [ ] Add daemon-level 429 density detector
-  - Monitor analysis machine failures for rate-limit patterns.
-  - When circuit opens, pause analysis and run prep instead.
-  - Resume analysis after cooldown period.
+  - Pause analysis when circuit opens; resume after cooldown.
 
 - [ ] Backoff tuning
-  - Current retry backoffs: `[2, 8, 16]` for prep, `[2, 8, 16, 35]` for expensive wrappers.
-  - Monitor if these are appropriate for OpenRouter free tier.
-  - Consider longer backoffs for the expensive model.
+  - Re-evaluate current retry backoffs for OpenRouter behavior.
 
 ## Quality
 
 - [ ] Validate report quality at scale
-  - Run 20+ papers and compare output quality to v1 reports.
-  - Check that parallel execution doesn't degrade why_hypothesis or reproduction quality.
+  - Run 20+ papers and compare quality to v1.
 
-- [ ] Fix FTS query construction for `collect_corpus_signals`
-  - Root cause: hyphenated terms in MATCH queries (`in-context`, `model-free`, `trade-offs`, etc.)
-    are emitted unquoted and interpreted as column expressions by SQLite FTS5.
-  - Symptoms: warnings like `FTS neighbor query failed (no such column: context/free/offs/...)`
-    and frequent fallback to LIKE search.
-  - Fix approach: quote/escape hyphenated terms (or all terms) in `_build_fts_query`.
-  - Validation: zero `no such column:` FTS warnings in prep logs for a sample batch.
+- [x] Fix FTS query construction for `collect_corpus_signals`
+  - Hyphenated terms are now quoted to avoid `no such column` parsing failures.
 
 - [ ] Improve terminology tagging
-  - Current scoring uses paper text + corpus neighbors + taxonomy.
-  - Consider adding section header weighting.
-  - Consider cross-paper tag normalization.
+  - Consider section weighting and cross-paper normalization.
 
 ## Infrastructure
+
+- [x] Move machine checkpoints from file backend to v2 SQLite DB
+- [x] Move machine lock state from file locks to v2 SQLite lease table
 
 - [ ] Add lightweight debug mode to suppress noisy OTEL metric dumps in logs
 
 - [ ] Add `--resume-only` flag to runner
   - Only resume incomplete executions, don't start new ones.
-  - Useful for recovering after crashes without consuming budget.
 
-- [ ] Checkpoint cleanup
-  - Completed executions leave checkpoints on disk.
-  - Add `--cleanup-checkpoints` flag to remove checkpoints for done/failed executions.
+- [ ] Checkpoint retention/cleanup policy
+  - Prune terminal checkpoint snapshots regularly (`done`/`failed`).
+  - Periodic DB compaction (`VACUUM INTO`) during downtime.
 
 - [ ] Config version bump
-  - Machine configs use `spec_version: "1.0.0"` but SDK is 1.1.0.
-  - Produces a validation warning. Bump when ready.
+  - Machine configs still use `spec_version: "1.0.0"`; SDK is 1.1.0.
+
+## SDK / FlatMachines follow-ups
+
+- [ ] `LocalFileBackend` missing `list(prefix)` method from spec
+  - Runner had to work around with direct scanning.
+
+- [ ] Peer machines should inherit parent persistence backend by default
+  - Important for consistency across nested machine invocation.
+
+- [ ] Surface `AgentResult.rate_limit` to hooks/context
+  - Needed for better adaptive scheduling and budget control.
+
+- [ ] Guard for action hooks returning partial context
+  - Detect unexpected key loss after `on_action`.
 
 ## V1 unwinding
 
-- [ ] Remove `config/machine.yml` (superseded by prep + expensive + wrap machines)
+- [ ] Remove `config/machine.yml` (superseded by prep + expensive + wrap)
 - [ ] Remove `src/research_paper_analysis_v2/main.py` if no longer needed
 - [ ] Confirm v1 `research_paper_analysis/` can be removed independently
+
+## Reference (rate-limit sample)
+
+- Example historical signal from logs:
+  - `RateLimitError ... free-models-per-min ... X-RateLimit-Limit/Remaining/Reset`

@@ -1,0 +1,31 @@
+# Word Cloud: Coding Assistants & Software Engineering Agents
+Coding Assistant
+Code Agent
+Software Engineering Agent
+Autonomous Programming
+AI Pair Programmer
+Repository-Level Code Generation
+Code Generation
+Code Completion
+Code Repair
+Bug Fixing
+Automated Debugging
+Program Synthesis
+Unit Test Generation
+Test-Driven Generation
+Pull Request Automation
+Code Review Automation
+Developer Productivity
+IDE Agent
+Tool-Augmented LLM
+Agentic Tool Use
+Function Calling
+Retrieval-Augmented Code Generation
+Codebase Retrieval
+SWE-Bench
+HumanEval
+MBPP
+APPS Benchmark
+RepoBench
+CodeSearchNet
+Multi-Agent Software Development
