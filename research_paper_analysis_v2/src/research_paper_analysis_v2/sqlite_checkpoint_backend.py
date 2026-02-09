@@ -35,6 +35,8 @@ class SQLiteCheckpointBackend(PersistenceBackend):
         self._conn.execute("PRAGMA busy_timeout = 10000")
         self._ensure_schema()
         self._op_lock = asyncio.Lock()
+        # Execution IDs that reached machine_end in this process; suppress latest-pointer rewrite.
+        self._terminalized_execution_ids: set[str] = set()
 
     def _ensure_schema(self) -> None:
         self._conn.executescript(
@@ -80,6 +82,13 @@ class SQLiteCheckpointBackend(PersistenceBackend):
 
         async with self._op_lock:
             if key.endswith("/latest"):
+                # CheckpointManager writes latest pointer after each snapshot save.
+                # If this execution just terminalized (machine_end), suppress pointer persistence.
+                if execution_id in self._terminalized_execution_ids:
+                    self._conn.execute("DELETE FROM machine_latest WHERE execution_id = ?", (execution_id,))
+                    self._conn.commit()
+                    return
+
                 latest_key = bytes(value).decode("utf-8").strip()
                 self._validate_key(latest_key)
                 self._conn.execute(
@@ -106,6 +115,17 @@ class SQLiteCheckpointBackend(PersistenceBackend):
             except Exception:
                 # Preserve raw bytes even if payload is not JSON.
                 pass
+
+            if event == "machine_end":
+                # Terminal policy: drop checkpoint history and latest pointer for this execution.
+                self._conn.execute("DELETE FROM machine_checkpoints WHERE execution_id = ?", (execution_id,))
+                self._conn.execute("DELETE FROM machine_latest WHERE execution_id = ?", (execution_id,))
+                self._conn.commit()
+                self._terminalized_execution_ids.add(execution_id)
+                return
+
+            # New non-terminal checkpoint for this execution: allow latest pointer updates again.
+            self._terminalized_execution_ids.discard(execution_id)
 
             self._conn.execute(
                 """
