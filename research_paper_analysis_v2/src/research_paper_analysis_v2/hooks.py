@@ -150,8 +150,8 @@ def _extract_pdf_text_sync(pdf_path_str: str, txt_path_str: str) -> Tuple[str, i
     pdf_path = Path(pdf_path_str)
     txt_path = Path(txt_path_str)
 
-    if txt_path.exists():
-        full_text = txt_path.read_text(encoding="utf-8")
+    if txt_path.exists() and txt_path.stat().st_size > 0:
+        full_text = txt_path.read_text(encoding="utf-8", errors="replace")
     else:
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF not found: {pdf_path}")
@@ -161,6 +161,7 @@ def _extract_pdf_text_sync(pdf_path_str: str, txt_path_str: str) -> Tuple[str, i
             text = page.extract_text() or ""
             pages.append(f"[PAGE {i + 1}]\n{text}")
         full_text = "\n\n".join(pages)
+        # pypdf can produce lone surrogates from math-heavy PDFs; scrub them.
         full_text = full_text.encode("utf-8", "replace").decode("utf-8")
         txt_path.write_text(full_text, encoding="utf-8")
 
