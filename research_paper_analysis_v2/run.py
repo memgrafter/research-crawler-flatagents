@@ -29,6 +29,7 @@ import socket
 import sqlite3
 import uuid
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -39,6 +40,14 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger("v2_runner")
+
+# Suppress litellm's sync print() calls (Provider List spam) that block the event loop
+# when piped through tee. Must be set before any litellm imports.
+try:
+    import litellm
+    litellm.suppress_debug_info = True
+except ImportError:
+    pass
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 CONFIG_DIR = PROJECT_ROOT / "config"
@@ -786,6 +795,14 @@ async def run_continuous(
         single_pass:    If True, stop as soon as no new work can be launched
                         and all active tasks finish (replaces old run_once).
     """
+    # Size the default thread pool to match worker count.  litellm.acompletion()
+    # uses loop.run_in_executor(None, ...) for sync setup before each LLM call;
+    # the default pool is only min(32, cpu+4) which starves 200 workers.
+    thread_workers = max(max_workers + 4, 32)
+    loop = asyncio.get_running_loop()
+    loop.set_default_executor(ThreadPoolExecutor(max_workers=thread_workers))
+    logger.info("Thread pool sized to %d (worker count %d + headroom)", thread_workers, max_workers)
+
     conn = get_v2_db()
     stats: Dict[str, int] = {
         "prep": 0, "expensive": 0, "wrap": 0, "resumed": 0, "errors": 0,
@@ -802,7 +819,6 @@ async def run_continuous(
 
     # Graceful shutdown: set event on SIGINT/SIGTERM so the main loop exits cleanly.
     shutdown_event = asyncio.Event()
-    loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, shutdown_event.set)
 
