@@ -1,20 +1,20 @@
 #!/usr/bin/env -S uv run python
-"""V2 runner: three-phase pipeline with budget-aware scheduling.
+"""V2 runner: three-phase pipeline with continuous priority scheduling.
 
 Phase 1 (prep):      download PDF, extract text, corpus signals, key_outcome  [cheap model]
 Phase 2 (expensive): parallel why_hypothesis + reproduction + open_questions   [pony-alpha only]
 Phase 3 (wrap):      limits, assembly, judge, repair, frontmatter             [cheap model]
 
-Budget strategy: maximize expensive model utilization.
-- Expensive gets priority for worker slots when prepped papers are available.
-- Wrap clears analyzed papers quickly (all cheap).
-- Prep builds buffer during cheap-only windows.
+Scheduling: continuous priority loop (expensive > wrap > prep).  Every time ANY
+task completes, the freed slot is immediately given to the highest-priority work.
+No batch boundaries.  Optional per-phase caps prevent one phase from eating all slots.
 
 Usage:
-    python run.py                           # One pass, default settings
-    python run.py --workers 5 --daemon      # Daemon mode, poll until done
-    python run.py --prep-only --workers 10  # Only run prep phase (fill buffer)
-    python run.py --seed-only               # Only seed from arxiv DB, no execution
+    python run.py                           # Single pass, default settings
+    python run.py --workers 200 --daemon    # Continuous until done / budget hit
+    python run.py --prep-only --workers 50  # Only run prep phase
+    python run.py --seed-only               # Only seed from arxiv DB
+    python run.py --workers 200 --daemon --max-prep 150 --max-expensive 40 --max-wrap 30
 """
 
 from __future__ import annotations
@@ -51,6 +51,13 @@ EXPENSIVE_REQS = 3   # why + reproduction + open_questions (all pony-alpha)
 WRAP_REQS = 4        # limits + assembler + judge + ~1 repair avg
 
 FINAL_STATES = {"done", "failed", "no_work_final", "failed_incomplete"}
+
+# Phase capacity caps (0 = uncapped, global --workers is the only gate).
+# Set these when you want to prevent one phase from eating all slots.
+# Intentionally allowed to sum > max_workers so no slots idle when a phase has no work.
+_MAX_PREP = int(os.environ.get("RPA_V2_MAX_PREP", "0"))
+_MAX_EXPENSIVE = int(os.environ.get("RPA_V2_MAX_EXPENSIVE", "0"))
+_MAX_WRAP = int(os.environ.get("RPA_V2_MAX_WRAP", "0"))
 
 # Machine config paths
 PREP_CONFIG = str(CONFIG_DIR / "prep_machine.yml")
@@ -658,192 +665,205 @@ def _mark_failed_in_db(execution_id: str, error: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Main run logic
+# Main run logic — continuous scheduler
 # ---------------------------------------------------------------------------
 
-async def run_once(
+def _pick_next(
+    conn: sqlite3.Connection,
+    prep_only: bool,
+    prep_sem: Optional[asyncio.Semaphore],
+    expensive_sem: Optional[asyncio.Semaphore],
+    wrap_sem: Optional[asyncio.Semaphore],
+):
+    """Return (coroutine, phase_sem, stat_key) for the highest-priority available work.
+
+    Returns (None, None, None) when there is nothing to launch.
+    Claims are limit=1 so the caller re-evaluates priority after every launch.
+
+    Priority:
+      1. Resume incomplete machines (expensive > wrap > prep)
+      2. New expensive (highest-value model usage)
+      3. New wrap (clears pipeline, cheap)
+      4. New prep (builds buffer, cheap)
+    """
+    # 1. Resume incomplete
+    for machine_name, config_file, sem in [
+        ("expensive-pipeline", EXPENSIVE_CONFIG, expensive_sem),
+        ("wrap-pipeline", WRAP_CONFIG, wrap_sem),
+        ("prep-pipeline", PREP_CONFIG, prep_sem),
+    ]:
+        if prep_only and machine_name != "prep-pipeline":
+            continue
+        incomplete = find_incomplete_executions(machine_name)[:1]
+        if incomplete:
+            return (resume_machine(incomplete[0], machine_name, config_file), sem, "resumed")
+
+    if not prep_only:
+        # 2. New expensive
+        claimed = claim_for_expensive(conn, 1)
+        if claimed:
+            return (run_expensive(claimed[0]), expensive_sem, "expensive")
+
+        # 3. New wrap
+        claimed = claim_for_wrap(conn, 1)
+        if claimed:
+            return (run_wrap(claimed[0]), wrap_sem, "wrap")
+
+    # 4. New prep
+    claimed = claim_for_prep(conn, 1)
+    if claimed:
+        return (run_prep(claimed[0]), prep_sem, "prep")
+
+    return (None, None, None)
+
+
+async def run_continuous(
     max_workers: int = 3,
     daily_budget: int = 1000,
     prep_only: bool = False,
-    min_buffer: int = 20,
+    poll_interval: float = 5.0,
+    seed_limit: int = 500,
+    stale_interval: float = 120.0,
+    single_pass: bool = False,
 ) -> Dict[str, int]:
-    """Run one pass: resume incomplete, then schedule new work.
+    """Continuous priority scheduler.  Replaces run_once + run_daemon.
 
-    Priority order (maximize expensive model utilization):
-    1. Resume incomplete machines (any phase)
-    2. Start expensive work (pony-alpha — highest priority for new work)
-    3. Start wrap work (cheap, clears pipeline)
-    4. Start prep work (cheap, builds buffer)
+    Every time ANY task completes, the freed slot is immediately given to the
+    highest-priority available work.  No batch boundaries.
+
+    Args:
+        max_workers:    Global concurrency ceiling.
+        daily_budget:   Stop after this many estimated LLM requests.
+        prep_only:      Only run prep phase.
+        poll_interval:  Seconds to sleep when no work is available.
+        seed_limit:     Max papers to seed per housekeeping sweep.
+        stale_interval: Seconds between stale-release / seed sweeps.
+        single_pass:    If True, stop as soon as no new work can be launched
+                        and all active tasks finish (replaces old run_once).
     """
     conn = get_v2_db()
-    stats = {
-        "prep_started": 0, "prep_resumed": 0,
-        "expensive_started": 0, "expensive_resumed": 0,
-        "wrap_started": 0, "wrap_resumed": 0,
+    stats: Dict[str, int] = {
+        "prep": 0, "expensive": 0, "wrap": 0, "resumed": 0, "errors": 0,
     }
 
-    # Release stale claims
-    release_stale(conn, "prepping", "pending", max_age_minutes=60)
-    release_stale(conn, "analyzing", "prepped", max_age_minutes=120)
-    release_stale(conn, "wrapping", "analyzed", max_age_minutes=60)
+    global_sem = asyncio.Semaphore(max_workers)
+    prep_sem = asyncio.Semaphore(_MAX_PREP) if _MAX_PREP > 0 else None
+    expensive_sem = asyncio.Semaphore(_MAX_EXPENSIVE) if _MAX_EXPENSIVE > 0 else None
+    wrap_sem = asyncio.Semaphore(_MAX_WRAP) if _MAX_WRAP > 0 else None
 
-    usage = get_daily_usage(conn)
-    remaining_budget = max(daily_budget - usage["total"], 0)
+    active: set[asyncio.Task] = set()
+    last_stale_check = 0.0
 
-    if remaining_budget <= 0:
-        logger.info("Daily budget exhausted (%d/%d)", usage["total"], daily_budget)
-        return stats
-
-    # Count current state
-    status_counts = {}
-    for row in conn.execute("SELECT status, COUNT(*) as cnt FROM executions GROUP BY status").fetchall():
-        status_counts[row["status"]] = row["cnt"]
-
-    pending = status_counts.get("pending", 0)
-    prepped = status_counts.get("prepped", 0)
-    analyzed = status_counts.get("analyzed", 0)
-    prepping = status_counts.get("prepping", 0)
-    analyzing = status_counts.get("analyzing", 0)
-    wrapping = status_counts.get("wrapping", 0)
-
-    logger.info(
-        "Status: pending=%d prepping=%d prepped=%d analyzing=%d analyzed=%d wrapping=%d | budget=%d/%d",
-        pending, prepping, prepped, analyzing, analyzed, wrapping, remaining_budget, daily_budget,
-    )
-
-    sem = asyncio.Semaphore(max_workers)
-    tasks: List[asyncio.Task] = []
-    budget_used = 0
-
-    async def run_with_sem(coro):
-        async with sem:
+    async def _guarded(coro, phase_sem):
+        """Acquire global sem (+ optional phase sem), then run the coroutine."""
+        async with global_sem:
+            if phase_sem is not None:
+                async with phase_sem:
+                    return await coro
             return await coro
 
-    # 1. Resume incomplete machines (depth-first completion)
-    for machine_name, config_file in [
-        ("expensive-pipeline", EXPENSIVE_CONFIG),
-        ("wrap-pipeline", WRAP_CONFIG),
-        ("prep-pipeline", PREP_CONFIG),
-    ]:
-        stat_key = machine_name.split("-")[0] + "_resumed"
-        for exec_id in find_incomplete_executions(machine_name)[:max_workers]:
-            if len(tasks) >= max_workers:
-                break
-            task = asyncio.create_task(run_with_sem(
-                resume_machine(exec_id, machine_name, config_file)
-            ))
-            tasks.append(task)
-            stats[stat_key] += 1
+    def _on_done(task: asyncio.Task) -> None:
+        active.discard(task)
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc:
+            stats["errors"] += 1
+            logger.error("Task failed: %s", exc)
+        # Track daily usage per completed task
+        phase = getattr(task, "phase", None)
+        if phase == "prep":
+            increment_daily_usage(conn, cheap=PREP_REQS)
+        elif phase == "expensive":
+            increment_daily_usage(conn, expensive=EXPENSIVE_REQS)
+        elif phase == "wrap":
+            increment_daily_usage(conn, cheap=WRAP_REQS)
+        elif phase == "resumed":
+            increment_daily_usage(conn, cheap=1)  # conservative estimate
 
-    if prep_only:
-        # Skip expensive and wrap, only do prep
-        pass
-    else:
-        # 2. Expensive work — highest priority for new slots (pure pony-alpha)
-        expensive_slots = min(
-            max(max_workers - len(tasks), 0),
-            prepped,
-            max((remaining_budget - budget_used) // EXPENSIVE_REQS, 0),
-        )
-        if expensive_slots > 0:
-            claimed = claim_for_expensive(conn, expensive_slots)
-            for ex in claimed:
-                task = asyncio.create_task(run_with_sem(run_expensive(ex)))
-                tasks.append(task)
-                stats["expensive_started"] += 1
-                budget_used += EXPENSIVE_REQS
-
-        # 3. Wrap work — clear analyzed backlog (all cheap, fast)
-        wrap_slots = min(
-            max(max_workers - len(tasks), 0),
-            analyzed,
-            max((remaining_budget - budget_used) // WRAP_REQS, 0),
-        )
-        if wrap_slots > 0:
-            claimed = claim_for_wrap(conn, wrap_slots)
-            for ex in claimed:
-                task = asyncio.create_task(run_with_sem(run_wrap(ex)))
-                tasks.append(task)
-                stats["wrap_started"] += 1
-                budget_used += WRAP_REQS
-
-    # 4. Prep work — fill buffer with remaining slots
-    prep_slots = min(
-        max(max_workers - len(tasks), 0),
-        pending,
-        max((remaining_budget - budget_used) // PREP_REQS, 0),
-    )
-    if prep_slots > 0:
-        claimed = claim_for_prep(conn, prep_slots)
-        for ex in claimed:
-            task = asyncio.create_task(run_with_sem(run_prep(ex)))
-            tasks.append(task)
-            stats["prep_started"] += 1
-            budget_used += PREP_REQS
-
-    # Wait for all
-    if tasks:
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                logger.error("Task %d failed: %s", i, result)
-
-    # Update daily usage estimate
-    total_cheap = (
-        (stats["prep_started"] + stats["prep_resumed"]) * PREP_REQS
-        + (stats["wrap_started"] + stats["wrap_resumed"]) * WRAP_REQS
-    )
-    total_expensive = (stats["expensive_started"] + stats["expensive_resumed"]) * EXPENSIVE_REQS
-    increment_daily_usage(conn, cheap=total_cheap, expensive=total_expensive)
-
-    return stats
-
-
-async def run_daemon(
-    max_workers: int = 3,
-    daily_budget: int = 1000,
-    poll_interval: float = 10.0,
-    prep_only: bool = False,
-    min_buffer: int = 20,
-) -> None:
-    """Daemon loop: seed → run → sleep → repeat."""
+    # --- Main loop ---
     while True:
-        seed()
+        loop_time = asyncio.get_event_loop().time()
 
-        stats = await run_once(
-            max_workers=max_workers,
-            daily_budget=daily_budget,
-            prep_only=prep_only,
-            min_buffer=min_buffer,
-        )
+        # Periodic housekeeping: release stale claims, re-seed, log status
+        if loop_time - last_stale_check > stale_interval:
+            release_stale(conn, "prepping", "pending", max_age_minutes=60)
+            release_stale(conn, "analyzing", "prepped", max_age_minutes=120)
+            release_stale(conn, "wrapping", "analyzed", max_age_minutes=60)
+            seed(limit=seed_limit)
 
-        total_work = sum(stats.values())
-        logger.info(
-            "Pass complete: prep=%d/%d expensive=%d/%d wrap=%d/%d",
-            stats["prep_started"], stats["prep_resumed"],
-            stats["expensive_started"], stats["expensive_resumed"],
-            stats["wrap_started"], stats["wrap_resumed"],
-        )
+            status_counts = {}
+            for row in conn.execute(
+                "SELECT status, COUNT(*) as cnt FROM executions GROUP BY status"
+            ).fetchall():
+                status_counts[row["status"]] = row["cnt"]
+            usage = get_daily_usage(conn)
+            logger.info(
+                "Status: pending=%d prepping=%d prepped=%d analyzing=%d "
+                "analyzed=%d wrapping=%d done=%d failed=%d | budget=%d/%d | active_tasks=%d",
+                status_counts.get("pending", 0),
+                status_counts.get("prepping", 0),
+                status_counts.get("prepped", 0),
+                status_counts.get("analyzing", 0),
+                status_counts.get("analyzed", 0),
+                status_counts.get("wrapping", 0),
+                status_counts.get("done", 0),
+                status_counts.get("failed", 0),
+                usage["total"], daily_budget,
+                len(active),
+            )
+            last_stale_check = loop_time
 
-        # Check if all work is done
-        conn = get_v2_db()
-        active = conn.execute(
-            "SELECT COUNT(*) FROM executions WHERE status NOT IN ('done', 'failed')"
-        ).fetchone()[0]
+        # Budget gate
         usage = get_daily_usage(conn)
-
-        if active == 0:
-            logger.info("All work complete. Daemon exiting.")
-            return
-
         if usage["total"] >= daily_budget:
-            logger.info("Daily budget exhausted (%d/%d). Daemon exiting.", usage["total"], daily_budget)
-            return
+            logger.info("Budget exhausted (%d/%d). Draining %d active tasks.",
+                        usage["total"], daily_budget, len(active))
+            break
 
-        if total_work == 0:
-            logger.info("No work done this pass. Waiting %ds...", poll_interval)
+        # Fill free slots with highest-priority work, one at a time
+        launched_this_cycle = 0
+        while len(active) < max_workers:
+            coro, phase_sem, stat_key = _pick_next(conn, prep_only, prep_sem, expensive_sem, wrap_sem)
+            if coro is None:
+                break
+            task = asyncio.create_task(_guarded(coro, phase_sem))
+            task.phase = stat_key  # type: ignore[attr-defined]
+            task.add_done_callback(_on_done)
+            active.add(task)
+            stats[stat_key] += 1
+            launched_this_cycle += 1
 
-        await asyncio.sleep(poll_interval)
+        # Decide how to wait
+        if active:
+            if launched_this_cycle == 0 and single_pass:
+                # single_pass: nothing new to launch, drain and exit
+                break
+            # Wait for at least one task to finish, then loop back to fill the slot
+            done, _ = await asyncio.wait(active, return_when=asyncio.FIRST_COMPLETED)
+        else:
+            # Nothing running, nothing to launch
+            remaining = conn.execute(
+                "SELECT COUNT(*) FROM executions WHERE status NOT IN ('done', 'failed')"
+            ).fetchone()[0]
+            if remaining == 0:
+                logger.info("All work complete.")
+                break
+            if single_pass:
+                break
+            logger.info("No work available. Waiting %.0fs...", poll_interval)
+            await asyncio.sleep(poll_interval)
+
+    # Drain remaining active tasks
+    if active:
+        logger.info("Draining %d active tasks...", len(active))
+        await asyncio.gather(*active, return_exceptions=True)
+
+    logger.info(
+        "Scheduler exit: prep=%d expensive=%d wrap=%d resumed=%d errors=%d",
+        stats["prep"], stats["expensive"], stats["wrap"], stats["resumed"], stats["errors"],
+    )
+    return stats
 
 
 # ---------------------------------------------------------------------------
@@ -854,15 +874,35 @@ async def main() -> None:
     parser = argparse.ArgumentParser(description="V2 paper analysis runner")
     parser.add_argument("-w", "--workers", type=int, default=3, help="Max concurrent workers")
     parser.add_argument("-b", "--budget", type=int, default=1000, help="Daily request budget")
-    parser.add_argument("-d", "--daemon", action="store_true", help="Run in daemon mode")
-    parser.add_argument("-p", "--poll-interval", type=float, default=10.0, help="Daemon poll interval (seconds)")
+    parser.add_argument("-d", "--daemon", action="store_true", help="Run continuously until all work done / budget hit")
+    parser.add_argument("-p", "--poll-interval", type=float, default=5.0, help="Seconds to sleep when no work available")
     parser.add_argument("--prep-only", action="store_true", help="Only run prep phase")
     parser.add_argument("--seed-only", action="store_true", help="Only seed from arxiv DB")
     parser.add_argument("--migrate-checkpoints-only", action="store_true", help="Only migrate file checkpoints into DB tables")
     parser.add_argument("--force-checkpoint-migration", action="store_true", help="Force checkpoint migration even if DB already has latest rows")
-    parser.add_argument("--min-buffer", type=int, default=20, help="Min prepped papers before prioritizing analysis")
     parser.add_argument("--seed-limit", type=int, default=500, help="Max papers to seed per pass")
+    parser.add_argument("--max-prep", type=int, default=0, help="Max concurrent prep tasks (0=uncapped, env: RPA_V2_MAX_PREP)")
+    parser.add_argument("--max-expensive", type=int, default=0, help="Max concurrent expensive tasks (0=uncapped, env: RPA_V2_MAX_EXPENSIVE)")
+    parser.add_argument("--max-wrap", type=int, default=0, help="Max concurrent wrap tasks (0=uncapped, env: RPA_V2_MAX_WRAP)")
+    parser.add_argument("--max-downloads", type=int, default=0, help="Max concurrent PDF downloads (0=use hooks default, env: RPA_V2_PREP_DOWNLOAD_CONCURRENCY)")
+    parser.add_argument("--max-extractions", type=int, default=0, help="Max concurrent PDF extractions (0=use hooks default, env: RPA_V2_PREP_EXTRACT_CONCURRENCY)")
     args = parser.parse_args()
+
+    # CLI flags override env vars for phase caps
+    global _MAX_PREP, _MAX_EXPENSIVE, _MAX_WRAP
+    if args.max_prep > 0:
+        _MAX_PREP = args.max_prep
+    if args.max_expensive > 0:
+        _MAX_EXPENSIVE = args.max_expensive
+    if args.max_wrap > 0:
+        _MAX_WRAP = args.max_wrap
+
+    # CLI flags override hooks I/O concurrency defaults
+    import research_paper_analysis_v2.hooks as _hooks
+    if args.max_downloads > 0:
+        _hooks.PREP_DOWNLOAD_CONCURRENCY = args.max_downloads
+    if args.max_extractions > 0:
+        _hooks.PREP_EXTRACT_CONCURRENCY = args.max_extractions
 
     mig = await migrate_file_checkpoints_to_db(force=args.force_checkpoint_migration)
     if any(mig.values()):
@@ -893,24 +933,16 @@ async def main() -> None:
     # Always seed first
     seed(limit=args.seed_limit)
 
-    if args.daemon:
-        await run_daemon(
-            max_workers=args.workers,
-            daily_budget=args.budget,
-            poll_interval=args.poll_interval,
-            prep_only=args.prep_only,
-            min_buffer=args.min_buffer,
-        )
-    else:
-        stats = await run_once(
-            max_workers=args.workers,
-            daily_budget=args.budget,
-            prep_only=args.prep_only,
-            min_buffer=args.min_buffer,
-        )
-        print(f"Prep: {stats['prep_started']} new, {stats['prep_resumed']} resumed")
-        print(f"Expensive: {stats['expensive_started']} new, {stats['expensive_resumed']} resumed")
-        print(f"Wrap: {stats['wrap_started']} new, {stats['wrap_resumed']} resumed")
+    stats = await run_continuous(
+        max_workers=args.workers,
+        daily_budget=args.budget,
+        prep_only=args.prep_only,
+        poll_interval=args.poll_interval,
+        seed_limit=args.seed_limit,
+        single_pass=not args.daemon,
+    )
+    print(f"Prep: {stats['prep']}  Expensive: {stats['expensive']}  Wrap: {stats['wrap']}  "
+          f"Resumed: {stats['resumed']}  Errors: {stats['errors']}")
 
 
 if __name__ == "__main__":

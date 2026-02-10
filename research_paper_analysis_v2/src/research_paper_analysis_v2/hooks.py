@@ -36,6 +36,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+import time
+
 import httpx
 import yaml
 from pypdf import PdfReader
@@ -44,6 +46,12 @@ from flatmachines import LoggingHooks
 from flatagents import get_logger
 
 logger = get_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# Prep I/O concurrency defaults — easy to tweak, overridable via env / CLI.
+# ---------------------------------------------------------------------------
+PREP_DOWNLOAD_CONCURRENCY = int(os.environ.get("RPA_V2_PREP_DOWNLOAD_CONCURRENCY", "20"))
+PREP_EXTRACT_CONCURRENCY = int(os.environ.get("RPA_V2_PREP_EXTRACT_CONCURRENCY", "20"))
 
 STOPWORDS = {
     "the", "and", "for", "with", "that", "this", "from", "into", "over", "under",
@@ -58,12 +66,85 @@ _ARXIV_CONN_CACHE: Dict[str, sqlite3.Connection] = {}
 _V2_CONN_CACHE: Dict[str, sqlite3.Connection] = {}
 _V2_WRITE_LOCK: Optional[asyncio.Lock] = None
 
+# Prep I/O singletons (created lazily on first use).
+_DOWNLOAD_SEM: Optional[asyncio.Semaphore] = None
+_EXTRACT_SEM: Optional[asyncio.Semaphore] = None
+_HTTP_CLIENT: Optional[httpx.AsyncClient] = None
+_HTTP_CLIENT_LOCK: Optional[asyncio.Lock] = None
+
 
 def _get_v2_write_lock() -> asyncio.Lock:
     global _V2_WRITE_LOCK
     if _V2_WRITE_LOCK is None:
         _V2_WRITE_LOCK = asyncio.Lock()
     return _V2_WRITE_LOCK
+
+
+def _get_download_sem() -> asyncio.Semaphore:
+    global _DOWNLOAD_SEM
+    if _DOWNLOAD_SEM is None:
+        _DOWNLOAD_SEM = asyncio.Semaphore(max(1, PREP_DOWNLOAD_CONCURRENCY))
+    return _DOWNLOAD_SEM
+
+
+def _get_extract_sem() -> asyncio.Semaphore:
+    global _EXTRACT_SEM
+    if _EXTRACT_SEM is None:
+        _EXTRACT_SEM = asyncio.Semaphore(max(1, PREP_EXTRACT_CONCURRENCY))
+    return _EXTRACT_SEM
+
+
+def _get_http_lock() -> asyncio.Lock:
+    global _HTTP_CLIENT_LOCK
+    if _HTTP_CLIENT_LOCK is None:
+        _HTTP_CLIENT_LOCK = asyncio.Lock()
+    return _HTTP_CLIENT_LOCK
+
+
+async def _get_http_client() -> httpx.AsyncClient:
+    global _HTTP_CLIENT
+    if _HTTP_CLIENT is not None:
+        return _HTTP_CLIENT
+    async with _get_http_lock():
+        if _HTTP_CLIENT is None:
+            _HTTP_CLIENT = httpx.AsyncClient(
+                follow_redirects=True,
+                timeout=httpx.Timeout(60.0),
+                limits=httpx.Limits(
+                    max_connections=int(os.environ.get("RPA_V2_HTTP_MAX_CONN", "128")),
+                    max_keepalive_connections=int(os.environ.get("RPA_V2_HTTP_KEEPALIVE", "64")),
+                ),
+            )
+    return _HTTP_CLIENT
+
+
+def _extract_pdf_text_sync(pdf_path_str: str, txt_path_str: str) -> Tuple[str, int]:
+    """Sync PDF text extraction — runs in thread pool via asyncio.to_thread."""
+    pdf_path = Path(pdf_path_str)
+    txt_path = Path(txt_path_str)
+
+    if txt_path.exists():
+        full_text = txt_path.read_text(encoding="utf-8")
+    else:
+        if not pdf_path.exists():
+            raise FileNotFoundError(f"PDF not found: {pdf_path}")
+        reader = PdfReader(pdf_path)
+        pages = []
+        for i, page in enumerate(reader.pages):
+            text = page.extract_text() or ""
+            pages.append(f"[PAGE {i + 1}]\n{text}")
+        full_text = "\n\n".join(pages)
+        full_text = full_text.encode("utf-8", "replace").decode("utf-8")
+        txt_path.write_text(full_text, encoding="utf-8")
+
+    ref_match = re.search(r"\nReferences\s*\n(.*)", full_text, re.DOTALL | re.IGNORECASE)
+    references: List[str] = []
+    if ref_match:
+        ref_text = ref_match.group(1)
+        refs = re.split(r"\n\s*\[?\d+\]?\s*", ref_text)
+        references = [r.strip()[:200] for r in refs if len(r.strip()) > 20][:40]
+
+    return full_text, len(references)
 
 
 def _utc_now_iso() -> str:
@@ -220,14 +301,21 @@ class V2Hooks(LoggingHooks):
         pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
         pdf_path = self._data_dir / f"{safe_id}.pdf"
 
-        if not pdf_path.exists():
-            logger.info("Downloading PDF: %s", pdf_url)
-            resp = httpx.get(pdf_url, follow_redirects=True, timeout=60.0)
-            resp.raise_for_status()
-            pdf_path.write_bytes(resp.content)
-        else:
+        if pdf_path.exists():
             logger.info("PDF already exists: %s", pdf_path)
+            context["pdf_path"] = str(pdf_path)
+            return context
 
+        t0 = time.perf_counter()
+        async with _get_download_sem():
+            client = await _get_http_client()
+            logger.info("Downloading PDF: %s", pdf_url)
+            resp = await client.get(pdf_url)
+            resp.raise_for_status()
+            await asyncio.to_thread(pdf_path.write_bytes, resp.content)
+
+        logger.info("download_pdf done arxiv_id=%s ms=%.0f bytes=%d",
+                     arxiv_id, (time.perf_counter() - t0) * 1000, len(resp.content))
         context["pdf_path"] = str(pdf_path)
         return context
 
@@ -240,32 +328,16 @@ class V2Hooks(LoggingHooks):
         pdf_path = self._data_dir / f"{safe_id}.pdf"
         txt_path = self._data_dir / f"{safe_id}.txt"
 
-        if txt_path.exists():
-            full_text = txt_path.read_text(encoding="utf-8")
-        else:
-            if not pdf_path.exists():
-                raise FileNotFoundError(f"PDF not found: {pdf_path}")
-            reader = PdfReader(pdf_path)
-            pages = []
-            for i, page in enumerate(reader.pages):
-                text = page.extract_text() or ""
-                pages.append(f"[PAGE {i + 1}]\n{text}")
-            full_text = "\n\n".join(pages)
-            txt_path.write_text(full_text, encoding="utf-8")
+        t0 = time.perf_counter()
+        async with _get_extract_sem():
+            full_text, ref_count = await asyncio.to_thread(
+                _extract_pdf_text_sync, str(pdf_path), str(txt_path),
+            )
 
-        # Keep full extracted paper text as the primary downstream payload.
-        paper_text = full_text
-
-        # Extract references
-        ref_match = re.search(r"\nReferences\s*\n(.*)", full_text, re.DOTALL | re.IGNORECASE)
-        references: List[str] = []
-        if ref_match:
-            ref_text = ref_match.group(1)
-            refs = re.split(r"\n\s*\[?\d+\]?\s*", ref_text)
-            references = [r.strip()[:200] for r in refs if len(r.strip()) > 20][:40]
-
-        context["paper_text"] = paper_text
-        context["reference_count"] = len(references)
+        logger.info("extract_text done arxiv_id=%s ms=%.0f chars=%d refs=%d",
+                     arxiv_id, (time.perf_counter() - t0) * 1000, len(full_text), ref_count)
+        context["paper_text"] = full_text
+        context["reference_count"] = ref_count
         return context
 
     # -------------------------------------------------------------------------
