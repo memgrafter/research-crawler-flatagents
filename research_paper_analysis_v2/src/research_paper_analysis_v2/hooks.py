@@ -48,6 +48,44 @@ from flatagents import get_logger
 logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
+# Transient error classification
+# ---------------------------------------------------------------------------
+_TRANSIENT_PATTERNS = (
+    "ServiceUnavailableError", "503",
+    "RateLimitError", "rate_limit", "429",
+    "peer closed connection",
+    "timeout", "Timeout",
+    "APIError",
+)
+
+# Per-model 429 gates — each model has its own asyncio.Event, starts open (set).
+# Cleared on 429 detection for that model, re-set after cooldown.
+_RATE_LIMIT_GATES: Dict[str, asyncio.Event] = {}
+_RATE_LIMIT_COOLDOWN = int(os.environ.get("RPA_V2_429_COOLDOWN_SECS", "10"))
+
+
+def get_rate_limit_gate(model: str) -> asyncio.Event:
+    """Lazy-init a per-model 429 gate (must be called from event loop)."""
+    if model not in _RATE_LIMIT_GATES:
+        ev = asyncio.Event()
+        ev.set()  # open
+        _RATE_LIMIT_GATES[model] = ev
+    return _RATE_LIMIT_GATES[model]
+
+
+def any_rate_limit_gate_closed() -> bool:
+    """True if ANY model gate is closed (for scheduler gating)."""
+    return any(not ev.is_set() for ev in _RATE_LIMIT_GATES.values())
+
+
+def _is_transient(error: str) -> bool:
+    return any(p in error for p in _TRANSIENT_PATTERNS)
+
+
+def _is_rate_limit(error: str) -> bool:
+    return "429" in error or "RateLimitError" in error or "rate_limit" in error.lower()
+
+# ---------------------------------------------------------------------------
 # Concurrency caps — all in one place, all env-overridable.
 # ---------------------------------------------------------------------------
 # Prep I/O (local semaphores in this module)
@@ -538,8 +576,43 @@ class V2Hooks(LoggingHooks):
             or context.get("error")
             or "unknown error"
         )
+        error_str = str(error)
 
         if execution_id:
+            # Transient HTTP errors → reset to phase for re-pickup
+            if _is_transient(error_str):
+                # Fire per-model 429 gate if rate-limited
+                if _is_rate_limit(error_str):
+                    model = context.get("model") or context.get("last_model") or "unknown"
+                    gate = get_rate_limit_gate(model)
+                    if gate.is_set():
+                        gate.clear()
+                        loop = asyncio.get_event_loop()
+                        loop.call_later(_RATE_LIMIT_COOLDOWN, gate.set)
+                        logger.warning("429 on %s — gate closed for %ds", model, _RATE_LIMIT_COOLDOWN)
+
+                # Determine reset status from what data we have
+                async with _get_v2_write_lock():
+                    conn = self._v2_db()
+                    row = conn.execute(
+                        "SELECT prep_output, expensive_output FROM executions WHERE execution_id = ?",
+                        (execution_id,),
+                    ).fetchone()
+                    if row and row[1]:  # has expensive_output
+                        reset_status = "analyzed"
+                    elif row and row[0]:  # has prep_output
+                        reset_status = "prepped"
+                    else:
+                        reset_status = "pending"
+                    conn.execute(
+                        "UPDATE executions SET status = ?, error = NULL, updated_at = ? WHERE execution_id = ?",
+                        (reset_status, _utc_now_iso(), execution_id),
+                    )
+                    conn.commit()
+                logger.info("Transient error for %s — reset to %s: %s", execution_id, reset_status, error_str[:120])
+                return context
+
+            # Permanent error → mark failed
             async with _get_v2_write_lock():
                 conn = self._v2_db()
                 conn.execute(
@@ -550,10 +623,10 @@ class V2Hooks(LoggingHooks):
                         updated_at = ?
                     WHERE execution_id = ?
                     """,
-                    (str(error), _utc_now_iso(), execution_id),
+                    (error_str, _utc_now_iso(), execution_id),
                 )
                 conn.commit()
-            logger.warning("Execution %s marked failed: %s", execution_id, error)
+            logger.warning("Execution %s marked failed: %s", execution_id, error_str)
 
         return context
 

@@ -125,6 +125,7 @@ data:
         report_body: context.report_body
       output_to_context:
         judge_decision_raw: output.content
+      on_error: wrap_failed
       transitions:
         - to: normalize_judge_decision
 
@@ -148,6 +149,7 @@ data:
         report_body: context.report_body
       output_to_context:
         report_body: output.content
+      on_error: wrap_failed
       transitions:
         - to: mark_repair_attempted
 

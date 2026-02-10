@@ -739,6 +739,10 @@ def _pick_next(
       3. New wrap (clears pipeline, cheap)
       4. New prep (builds buffer, cheap)
     """
+    # Per-model 429 gate — if any model is rate-limited, skip LLM phases
+    from research_paper_analysis_v2.hooks import any_rate_limit_gate_closed
+    llm_gated = any_rate_limit_gate_closed()
+
     # 1. Resume incomplete
     for machine_name, config_file, sem in [
         ("expensive-pipeline", EXPENSIVE_CONFIG, expensive_sem),
@@ -747,29 +751,35 @@ def _pick_next(
     ]:
         if prep_only and machine_name != "prep-pipeline":
             continue
+        # Skip LLM-phase resumes while rate-limited
+        if llm_gated and machine_name != "prep-pipeline":
+            continue
         for exec_id in find_incomplete_executions(machine_name):
             if exec_id not in resuming:
                 resuming.add(exec_id)
                 return (resume_machine(exec_id, machine_name, config_file), sem, "resumed")
 
-    if not prep_only:
+    if not prep_only and not llm_gated:
         # 2. New expensive
-        claimed = claim_for_expensive(conn, 1)
-        if claimed:
-            resuming.add(claimed[0]["execution_id"])
-            return (run_expensive(claimed[0]), expensive_sem, "expensive")
+        if expensive_sem is None or expensive_sem._value > 0:
+            claimed = claim_for_expensive(conn, 1)
+            if claimed:
+                resuming.add(claimed[0]["execution_id"])
+                return (run_expensive(claimed[0]), expensive_sem, "expensive")
 
         # 3. New wrap
-        claimed = claim_for_wrap(conn, 1)
-        if claimed:
-            resuming.add(claimed[0]["execution_id"])
-            return (run_wrap(claimed[0]), wrap_sem, "wrap")
+        if wrap_sem is None or wrap_sem._value > 0:
+            claimed = claim_for_wrap(conn, 1)
+            if claimed:
+                resuming.add(claimed[0]["execution_id"])
+                return (run_wrap(claimed[0]), wrap_sem, "wrap")
 
     # 4. New prep
-    claimed = claim_for_prep(conn, 1)
-    if claimed:
-        resuming.add(claimed[0]["execution_id"])
-        return (run_prep(claimed[0]), prep_sem, "prep")
+    if prep_sem is None or prep_sem._value > 0:
+        claimed = claim_for_prep(conn, 1)
+        if claimed:
+            resuming.add(claimed[0]["execution_id"])
+            return (run_prep(claimed[0]), prep_sem, "prep")
 
     return (None, None, None)
 
