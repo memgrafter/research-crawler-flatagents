@@ -51,7 +51,8 @@ logger = get_logger(__name__)
 # Concurrency caps — all in one place, all env-overridable.
 # ---------------------------------------------------------------------------
 # Prep I/O (local semaphores in this module)
-PREP_DOWNLOAD_CONCURRENCY = int(os.environ.get("RPA_V2_PREP_DOWNLOAD_CONCURRENCY", "60"))
+# best to keep download concurrency low to avoid throttling from arxiv. frees the pdfs for other work.
+PREP_DOWNLOAD_CONCURRENCY = int(os.environ.get("RPA_V2_PREP_DOWNLOAD_CONCURRENCY", "5"))
 PREP_EXTRACT_CONCURRENCY = int(os.environ.get("RPA_V2_PREP_EXTRACT_CONCURRENCY", "60"))
 PREP_CORPUS_CONCURRENCY = int(os.environ.get("RPA_V2_PREP_CORPUS_CONCURRENCY", "60"))
 
