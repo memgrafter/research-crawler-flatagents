@@ -433,7 +433,7 @@ def claim_for_prep(conn: sqlite3.Connection, limit: int) -> List[Dict[str, Any]]
         WHERE execution_id IN (
             SELECT execution_id FROM executions
             WHERE status = 'pending'
-            ORDER BY created_at ASC
+            ORDER BY priority DESC, created_at ASC
             LIMIT ?
         )
         RETURNING execution_id, arxiv_id, paper_id, title, authors, abstract
@@ -454,7 +454,7 @@ def claim_for_expensive(conn: sqlite3.Connection, limit: int) -> List[Dict[str, 
         WHERE execution_id IN (
             SELECT execution_id FROM executions
             WHERE status = 'prepped'
-            ORDER BY created_at ASC
+            ORDER BY priority DESC, created_at ASC
             LIMIT ?
         )
         RETURNING execution_id, arxiv_id, paper_id, title, authors, abstract, prep_output
@@ -475,7 +475,7 @@ def claim_for_wrap(conn: sqlite3.Connection, limit: int) -> List[Dict[str, Any]]
         WHERE execution_id IN (
             SELECT execution_id FROM executions
             WHERE status = 'analyzed'
-            ORDER BY created_at ASC
+            ORDER BY priority DESC, created_at ASC
             LIMIT ?
         )
         RETURNING execution_id, arxiv_id, paper_id, title, authors, abstract, prep_output, expensive_output
@@ -756,16 +756,19 @@ def _pick_next(
         # 2. New expensive
         claimed = claim_for_expensive(conn, 1)
         if claimed:
+            resuming.add(claimed[0]["execution_id"])
             return (run_expensive(claimed[0]), expensive_sem, "expensive")
 
         # 3. New wrap
         claimed = claim_for_wrap(conn, 1)
         if claimed:
+            resuming.add(claimed[0]["execution_id"])
             return (run_wrap(claimed[0]), wrap_sem, "wrap")
 
     # 4. New prep
     claimed = claim_for_prep(conn, 1)
     if claimed:
+        resuming.add(claimed[0]["execution_id"])
         return (run_prep(claimed[0]), prep_sem, "prep")
 
     return (None, None, None)

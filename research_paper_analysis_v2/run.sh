@@ -32,8 +32,8 @@ if [ "$CURRENT_FDS" -lt "$MIN_FDS" ]; then
 fi
 
 # --- aiohttp connection pool (litellm uses aiohttp for async HTTP) ---------
-export AIOHTTP_CONNECTOR_LIMIT=500
-export AIOHTTP_CONNECTOR_LIMIT_PER_HOST=500
+export AIOHTTP_CONNECTOR_LIMIT=2000
+export AIOHTTP_CONNECTOR_LIMIT_PER_HOST=2000
 
 # --- Venv + deps -----------------------------------------------------------
 uv sync
