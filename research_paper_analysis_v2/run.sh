@@ -23,6 +23,18 @@ LOG_FILE="${LOG_FILE:-$LOG_DIR/run_${TIMESTAMP}.log}"
 exec > >(tee -a "$LOG_FILE") 2>&1
 echo "Logging to $LOG_FILE"
 
+# --- File descriptor limit (no sudo needed) --------------------------------
+MIN_FDS=10000
+CURRENT_FDS="$(ulimit -n)"
+if [ "$CURRENT_FDS" -lt "$MIN_FDS" ]; then
+  ulimit -n "$MIN_FDS"
+  echo "Raised ulimit -n from $CURRENT_FDS to $(ulimit -n)"
+fi
+
+# --- aiohttp connection pool (litellm uses aiohttp for async HTTP) ---------
+export AIOHTTP_CONNECTOR_LIMIT=500
+export AIOHTTP_CONNECTOR_LIMIT_PER_HOST=500
+
 # --- Venv + deps -----------------------------------------------------------
 uv sync
 
