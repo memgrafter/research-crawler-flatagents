@@ -3,8 +3,8 @@ name = "research_paper_analysis_v2"
 version = "0.1.0"
 description = "Simplified v2 paper analysis pipeline with terminology tagging"
 dependencies = [
-    "flatagents[litellm,metrics]",
-    "flatmachines[flatagents,metrics]",
+    "flatagents[litellm,metrics]>=1.1.1",
+    "flatmachines[flatagents,metrics]>=1.1.1",
     "pyyaml",
     "httpx",
     "pypdf",

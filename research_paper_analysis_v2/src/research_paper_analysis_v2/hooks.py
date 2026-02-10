@@ -59,6 +59,7 @@ PREP_CORPUS_CONCURRENCY = int(os.environ.get("RPA_V2_PREP_CORPUS_CONCURRENCY", "
 # PDF download httpx client pool (our own AsyncClient for arxiv downloads)
 HTTP_MAX_CONNECTIONS = int(os.environ.get("RPA_V2_HTTP_MAX_CONN", "128"))
 HTTP_MAX_KEEPALIVE = int(os.environ.get("RPA_V2_HTTP_KEEPALIVE", "64"))
+DOWNLOAD_USER_AGENT = os.environ.get("RPA_V2_DOWNLOAD_USER_AGENT", "")
 
 # LLM aiohttp pool (litellm reads these at import time — set in run.sh)
 # AIOHTTP_CONNECTOR_LIMIT        — total TCP connections (default 300)
@@ -134,9 +135,13 @@ async def _get_http_client() -> httpx.AsyncClient:
         return _HTTP_CLIENT
     async with _get_http_lock():
         if _HTTP_CLIENT is None:
+            headers = {}
+            if DOWNLOAD_USER_AGENT:
+                headers["User-Agent"] = DOWNLOAD_USER_AGENT
             _HTTP_CLIENT = httpx.AsyncClient(
                 follow_redirects=True,
                 timeout=httpx.Timeout(60.0),
+                headers=headers,
                 limits=httpx.Limits(
                     max_connections=HTTP_MAX_CONNECTIONS,
                     max_keepalive_connections=HTTP_MAX_KEEPALIVE,
@@ -326,14 +331,15 @@ class V2Hooks(LoggingHooks):
 
         self._data_dir.mkdir(parents=True, exist_ok=True)
         safe_id = arxiv_id.replace("/", "_")
-        pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
         pdf_path = self._data_dir / f"{safe_id}.pdf"
 
+        # Fast path: skip semaphore entirely if PDF is cached
         if pdf_path.exists():
             logger.info("PDF already exists: %s", pdf_path)
             context["pdf_path"] = str(pdf_path)
             return context
 
+        pdf_url = f"https://export.arxiv.org/pdf/{arxiv_id}"
         t0 = time.perf_counter()
         async with _get_download_sem():
             client = await _get_http_client()
