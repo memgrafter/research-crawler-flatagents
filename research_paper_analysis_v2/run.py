@@ -24,6 +24,7 @@ import asyncio
 import json
 import logging
 import os
+import signal
 import socket
 import sqlite3
 import uuid
@@ -341,6 +342,44 @@ def increment_daily_usage(conn: sqlite3.Connection, cheap: int = 0, expensive: i
 # ---------------------------------------------------------------------------
 # Checkpoint scanning
 # ---------------------------------------------------------------------------
+
+def reset_orphaned_executions() -> Dict[str, int]:
+    """Reset executions stuck in transient statuses with no checkpoint record.
+
+    These are executions that were claimed (status changed to prepping/analyzing/
+    wrapping) but the machine never checkpointed — typically from a Ctrl+C or crash.
+    Safe for single-daemon use; in multi-daemon setups use --reset-orphans only when
+    you know no other daemons are running.
+    """
+    conn = get_v2_db()
+    stats: Dict[str, int] = {}
+
+    for transient, fallback in [
+        ("prepping", "pending"),
+        ("analyzing", "prepped"),
+        ("wrapping", "analyzed"),
+    ]:
+        # Find executions in this transient status that have NO checkpoint record
+        cur = conn.execute(
+            """
+            UPDATE executions
+            SET status = ?, updated_at = ?
+            WHERE status = ?
+              AND execution_id NOT IN (
+                  SELECT DISTINCT ml.execution_id
+                  FROM machine_latest ml
+              )
+            """,
+            (fallback, datetime.now(timezone.utc).isoformat(), transient),
+        )
+        conn.commit()
+        count = cur.rowcount or 0
+        stats[transient] = count
+        if count:
+            logger.info("Reset %d orphaned '%s' → '%s'", count, transient, fallback)
+
+    return stats
+
 
 def find_incomplete_executions(machine_name: str) -> List[str]:
     """Find incomplete executions by querying DB-backed checkpoint tables."""
@@ -674,11 +713,16 @@ def _pick_next(
     prep_sem: Optional[asyncio.Semaphore],
     expensive_sem: Optional[asyncio.Semaphore],
     wrap_sem: Optional[asyncio.Semaphore],
+    resuming: set[str],
 ):
     """Return (coroutine, phase_sem, stat_key) for the highest-priority available work.
 
     Returns (None, None, None) when there is nothing to launch.
     Claims are limit=1 so the caller re-evaluates priority after every launch.
+
+    ``resuming`` tracks execution IDs already launched for resume so we don't
+    duplicate — find_incomplete_executions is read-only and returns the same
+    IDs until the task actually updates the checkpoint.
 
     Priority:
       1. Resume incomplete machines (expensive > wrap > prep)
@@ -694,9 +738,10 @@ def _pick_next(
     ]:
         if prep_only and machine_name != "prep-pipeline":
             continue
-        incomplete = find_incomplete_executions(machine_name)[:1]
-        if incomplete:
-            return (resume_machine(incomplete[0], machine_name, config_file), sem, "resumed")
+        for exec_id in find_incomplete_executions(machine_name):
+            if exec_id not in resuming:
+                resuming.add(exec_id)
+                return (resume_machine(exec_id, machine_name, config_file), sem, "resumed")
 
     if not prep_only:
         # 2. New expensive
@@ -752,15 +797,26 @@ async def run_continuous(
     wrap_sem = asyncio.Semaphore(_MAX_WRAP) if _MAX_WRAP > 0 else None
 
     active: set[asyncio.Task] = set()
+    resuming: set[str] = set()
     last_stale_check = 0.0
+
+    # Graceful shutdown: set event on SIGINT/SIGTERM so the main loop exits cleanly.
+    shutdown_event = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, shutdown_event.set)
 
     async def _guarded(coro, phase_sem):
         """Acquire global sem (+ optional phase sem), then run the coroutine."""
-        async with global_sem:
-            if phase_sem is not None:
-                async with phase_sem:
-                    return await coro
-            return await coro
+        try:
+            async with global_sem:
+                if phase_sem is not None:
+                    async with phase_sem:
+                        return await coro
+                return await coro
+        except asyncio.CancelledError:
+            coro.close()
+            raise
 
     def _on_done(task: asyncio.Task) -> None:
         active.discard(task)
@@ -814,6 +870,11 @@ async def run_continuous(
             )
             last_stale_check = loop_time
 
+        # Shutdown gate
+        if shutdown_event.is_set():
+            logger.info("Shutdown requested. Draining %d active tasks.", len(active))
+            break
+
         # Budget gate
         usage = get_daily_usage(conn)
         if usage["total"] >= daily_budget:
@@ -824,7 +885,7 @@ async def run_continuous(
         # Fill free slots with highest-priority work, one at a time
         launched_this_cycle = 0
         while len(active) < max_workers:
-            coro, phase_sem, stat_key = _pick_next(conn, prep_only, prep_sem, expensive_sem, wrap_sem)
+            coro, phase_sem, stat_key = _pick_next(conn, prep_only, prep_sem, expensive_sem, wrap_sem, resuming)
             if coro is None:
                 break
             task = asyncio.create_task(_guarded(coro, phase_sem))
@@ -852,12 +913,30 @@ async def run_continuous(
             if single_pass:
                 break
             logger.info("No work available. Waiting %.0fs...", poll_interval)
-            await asyncio.sleep(poll_interval)
+            try:
+                await asyncio.wait_for(shutdown_event.wait(), timeout=poll_interval)
+            except asyncio.TimeoutError:
+                pass  # normal — poll interval elapsed
 
     # Drain remaining active tasks
     if active:
-        logger.info("Draining %d active tasks...", len(active))
-        await asyncio.gather(*active, return_exceptions=True)
+        if shutdown_event.is_set():
+            logger.info("Cancelling %d active tasks...", len(active))
+            for t in active:
+                t.cancel()
+            # Force-exit on second signal during drain
+            loop.add_signal_handler(signal.SIGINT, lambda: os._exit(130))
+            loop.add_signal_handler(signal.SIGTERM, lambda: os._exit(143))
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*active, return_exceptions=True),
+                    timeout=10.0,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Drain timed out after 10s with %d tasks still active. Exiting.", len(active))
+        else:
+            logger.info("Draining %d active tasks...", len(active))
+            await asyncio.gather(*active, return_exceptions=True)
 
     logger.info(
         "Scheduler exit: prep=%d expensive=%d wrap=%d resumed=%d errors=%d",
@@ -886,6 +965,8 @@ async def main() -> None:
     parser.add_argument("--max-wrap", type=int, default=0, help="Max concurrent wrap tasks (0=uncapped, env: RPA_V2_MAX_WRAP)")
     parser.add_argument("--max-downloads", type=int, default=0, help="Max concurrent PDF downloads (0=use hooks default, env: RPA_V2_PREP_DOWNLOAD_CONCURRENCY)")
     parser.add_argument("--max-extractions", type=int, default=0, help="Max concurrent PDF extractions (0=use hooks default, env: RPA_V2_PREP_EXTRACT_CONCURRENCY)")
+    parser.add_argument("--max-corpus-queries", type=int, default=0, help="Max concurrent corpus signal queries (0=use hooks default, env: RPA_V2_PREP_CORPUS_CONCURRENCY)")
+    parser.add_argument("--reset-orphans", action="store_true", help="Reset claimed-but-never-checkpointed executions on startup (safe for single-daemon)")
     args = parser.parse_args()
 
     # CLI flags override env vars for phase caps
@@ -903,6 +984,8 @@ async def main() -> None:
         _hooks.PREP_DOWNLOAD_CONCURRENCY = args.max_downloads
     if args.max_extractions > 0:
         _hooks.PREP_EXTRACT_CONCURRENCY = args.max_extractions
+    if args.max_corpus_queries > 0:
+        _hooks.PREP_CORPUS_CONCURRENCY = args.max_corpus_queries
 
     mig = await migrate_file_checkpoints_to_db(force=args.force_checkpoint_migration)
     if any(mig.values()):
@@ -924,6 +1007,14 @@ async def main() -> None:
             f"skipped_existing_db={mig['skipped_existing_db']}"
         )
         return
+
+    if args.reset_orphans:
+        orphan_stats = reset_orphaned_executions()
+        total_reset = sum(orphan_stats.values())
+        if total_reset:
+            logger.info("Reset orphans: %s", orphan_stats)
+        else:
+            logger.info("No orphaned executions found.")
 
     if args.seed_only:
         count = seed(limit=args.seed_limit)
