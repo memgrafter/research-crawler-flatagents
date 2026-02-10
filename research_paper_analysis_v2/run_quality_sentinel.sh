@@ -18,7 +18,7 @@ if [[ ! -x "$VENV_PATH/bin/python" ]]; then
 fi
 
 DAEMON=false
-INTERVAL=30
+INTERVAL=5
 PASSTHROUGH_ARGS=()
 
 while [[ $# -gt 0 ]]; do

@@ -52,6 +52,7 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 PREP_DOWNLOAD_CONCURRENCY = int(os.environ.get("RPA_V2_PREP_DOWNLOAD_CONCURRENCY", "20"))
 PREP_EXTRACT_CONCURRENCY = int(os.environ.get("RPA_V2_PREP_EXTRACT_CONCURRENCY", "20"))
+PREP_CORPUS_CONCURRENCY = int(os.environ.get("RPA_V2_PREP_CORPUS_CONCURRENCY", "20"))
 
 STOPWORDS = {
     "the", "and", "for", "with", "that", "this", "from", "into", "over", "under",
@@ -69,6 +70,7 @@ _V2_WRITE_LOCK: Optional[asyncio.Lock] = None
 # Prep I/O singletons (created lazily on first use).
 _DOWNLOAD_SEM: Optional[asyncio.Semaphore] = None
 _EXTRACT_SEM: Optional[asyncio.Semaphore] = None
+_CORPUS_SEM: Optional[asyncio.Semaphore] = None
 _HTTP_CLIENT: Optional[httpx.AsyncClient] = None
 _HTTP_CLIENT_LOCK: Optional[asyncio.Lock] = None
 
@@ -92,6 +94,13 @@ def _get_extract_sem() -> asyncio.Semaphore:
     if _EXTRACT_SEM is None:
         _EXTRACT_SEM = asyncio.Semaphore(max(1, PREP_EXTRACT_CONCURRENCY))
     return _EXTRACT_SEM
+
+
+def _get_corpus_sem() -> asyncio.Semaphore:
+    global _CORPUS_SEM
+    if _CORPUS_SEM is None:
+        _CORPUS_SEM = asyncio.Semaphore(max(1, PREP_CORPUS_CONCURRENCY))
+    return _CORPUS_SEM
 
 
 def _get_http_lock() -> asyncio.Lock:
@@ -523,27 +532,21 @@ class V2Hooks(LoggingHooks):
 
         return context
 
-    async def _collect_corpus_signals(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        conn = self._conn_or_none()
-        title = self._norm(context.get("title"))
-        abstract = self._norm(context.get("abstract"))
-        arxiv_id = self._norm(context.get("arxiv_id"))
-
-        if not conn:
-            context["corpus_signals"] = {
-                "status": "db_unavailable",
-                "summary": "Corpus database unavailable; proceeding with paper-only analysis.",
-            }
-            context["corpus_neighbors"] = []
-            context["neighbors_considered"] = 0
-            context["neighbors_used"] = 0
-            return context
-
+    def _collect_corpus_signals_sync(
+        self,
+        conn: sqlite3.Connection,
+        arxiv_id: str,
+        title: str,
+        abstract: str,
+        neighbors_considered: int,
+        neighbors_used: int,
+    ) -> Dict[str, Any]:
+        """Pure sync corpus signal collection. Runs in thread pool."""
         current_paper_id = self._paper_id_for_arxiv(conn, arxiv_id)
-        rows = self._search_neighbors(conn, title, abstract, current_paper_id, self._neighbors_considered)
+        rows = self._search_neighbors(conn, title, abstract, current_paper_id, neighbors_considered)
 
         considered = len(rows)
-        used_rows = rows[: self._neighbors_used]
+        used_rows = rows[:neighbors_used]
         neighbors = [self._row_to_neighbor(r) for r in used_rows]
 
         fmr_vals = [float((r["fmr_score"] or 0.0)) for r in rows]
@@ -562,10 +565,40 @@ class V2Hooks(LoggingHooks):
             "summary": self._build_signal_summary(considered, neighbors, fmr_vals, cit_vals),
         }
 
-        context["corpus_signals"] = signals
-        context["corpus_neighbors"] = neighbors
-        context["neighbors_considered"] = considered
-        context["neighbors_used"] = len(neighbors)
+        return {
+            "corpus_signals": signals,
+            "corpus_neighbors": neighbors,
+            "neighbors_considered": considered,
+            "neighbors_used": len(neighbors),
+        }
+
+    async def _collect_corpus_signals(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        conn = self._conn_or_none()
+        title = self._norm(context.get("title"))
+        abstract = self._norm(context.get("abstract"))
+        arxiv_id = self._norm(context.get("arxiv_id"))
+
+        if not conn:
+            context["corpus_signals"] = {
+                "status": "db_unavailable",
+                "summary": "Corpus database unavailable; proceeding with paper-only analysis.",
+            }
+            context["corpus_neighbors"] = []
+            context["neighbors_considered"] = 0
+            context["neighbors_used"] = 0
+            return context
+
+        t0 = time.perf_counter()
+        async with _get_corpus_sem():
+            result = await asyncio.to_thread(
+                self._collect_corpus_signals_sync,
+                conn, arxiv_id, title, abstract,
+                self._neighbors_considered, self._neighbors_used,
+            )
+
+        logger.info("collect_corpus_signals done arxiv_id=%s ms=%.0f",
+                     arxiv_id, (time.perf_counter() - t0) * 1000)
+        context.update(result)
         return context
 
     def _paper_id_for_arxiv(self, conn: sqlite3.Connection, arxiv_id: str) -> Optional[int]:
