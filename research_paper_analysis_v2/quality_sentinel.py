@@ -7,21 +7,34 @@ Checks newest N reports in data/*.md for:
 3) Executive summary opener duplication
 4) Numeric grounding against data/<arxiv_id>.txt
 
+--fix mode:
+  Scans ALL md files (or --latest N). For each arxiv_id:
+  - If duplicates exist: keep the best complete one (prefer DB-pointed, then largest).
+    Delete orphans.  If the DB-pointed file is broken but an orphan is good, swap it in.
+  - If the surviving file is incomplete: reset execution to pending and delete the file
+    so the pipeline re-processes it.
+
 Usage examples:
   python quality_sentinel.py --latest 10
   python quality_sentinel.py --latest 25 --fail-on-warn --json-out logs/quality_sentinel_latest.json
+  python quality_sentinel.py --fix                  # scan ALL, fix duplicates + incomplete
+  python quality_sentinel.py --fix --latest 500     # scan latest 500 only
+  python quality_sentinel.py --fix --dry-run        # show what would happen, don't touch anything
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import sqlite3
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 REQUIRED_SECTIONS = [
     "Quick Facts",
@@ -159,6 +172,138 @@ def analyze_file(md_path: Path, data_dir: Path) -> FileResult:
     )
 
 
+def is_complete(md_path: Path) -> bool:
+    """Quick check: does this file have all required sections?"""
+    try:
+        text = md_path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+    headings = set(HEADING_RE.findall(text))
+    return all(s in headings for s in REQUIRED_SECTIONS)
+
+
+def _get_v2_db(data_dir: Path) -> sqlite3.Connection:
+    db_path = os.environ.get(
+        "V2_EXECUTIONS_DB_PATH",
+        str(data_dir / "v2_executions.sqlite"),
+    )
+    conn = sqlite3.connect(db_path, check_same_thread=False, timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 10000")
+    return conn
+
+
+def run_fix(data_dir: Path, md_files: List[Path], dry_run: bool = False) -> Dict[str, int]:
+    """Fix duplicates and incomplete reports.
+
+    Returns counts of actions taken.
+    """
+    stats = {
+        "files_scanned": 0,
+        "duplicates_deleted": 0,
+        "orphan_promoted": 0,
+        "incomplete_reset": 0,
+        "incomplete_deleted": 0,
+        "already_ok": 0,
+    }
+
+    conn = _get_v2_db(data_dir)
+
+    # Group md files by arxiv_id
+    by_arxiv: Dict[str, List[Path]] = defaultdict(list)
+    for p in md_files:
+        m = re.match(r"^(\d{4}\.\d{4,5})", p.name)
+        if m:
+            by_arxiv[m.group(1)].append(p)
+    stats["files_scanned"] = len(md_files)
+
+    for arxiv_id, files in by_arxiv.items():
+        # Look up DB row
+        row = conn.execute(
+            "SELECT execution_id, status, result_path FROM executions WHERE arxiv_id = ?",
+            (arxiv_id,),
+        ).fetchone()
+        if not row:
+            continue
+
+        db_result_path = row["result_path"] or ""
+        db_file = Path(db_result_path).name if db_result_path else ""
+
+        # Identify which file the DB points to vs orphans
+        db_pointed: Optional[Path] = None
+        orphans: List[Path] = []
+        for f in files:
+            if f.name == db_file:
+                db_pointed = f
+            else:
+                orphans.append(f)
+
+        # If no DB match (e.g., result_path cleared), treat largest as db_pointed
+        if db_pointed is None and files:
+            files_sorted = sorted(files, key=lambda p: p.stat().st_size, reverse=True)
+            db_pointed = files_sorted[0]
+            orphans = files_sorted[1:]
+
+        # Check completeness
+        db_ok = db_pointed is not None and is_complete(db_pointed)
+
+        # If DB file is broken, check orphans for a good one
+        promoted = False
+        if not db_ok and orphans:
+            for orphan in sorted(orphans, key=lambda p: p.stat().st_size, reverse=True):
+                if is_complete(orphan):
+                    # Promote this orphan: update DB result_path, swap files
+                    print(f"  PROMOTE {arxiv_id}: {orphan.name} -> result_path (replaces broken {db_pointed.name if db_pointed else 'none'})")
+                    if not dry_run:
+                        conn.execute(
+                            "UPDATE executions SET result_path = ?, updated_at = ? WHERE arxiv_id = ?",
+                            (str(orphan), datetime.now(timezone.utc).isoformat(), arxiv_id),
+                        )
+                        conn.commit()
+                    # Delete the broken DB file
+                    if db_pointed and db_pointed.exists():
+                        print(f"  DELETE  {arxiv_id}: {db_pointed.name} (broken, replaced by orphan)")
+                        if not dry_run:
+                            db_pointed.unlink()
+                        stats["duplicates_deleted"] += 1
+                    # Remove promoted orphan from orphan list
+                    orphans.remove(orphan)
+                    db_pointed = orphan
+                    db_ok = True
+                    promoted = True
+                    stats["orphan_promoted"] += 1
+                    break
+
+        # Delete remaining orphans (duplicates)
+        for orphan in orphans:
+            print(f"  DELETE  {arxiv_id}: {orphan.name} (duplicate orphan)")
+            if not dry_run:
+                orphan.unlink()
+            stats["duplicates_deleted"] += 1
+
+        # If surviving file is still incomplete, reset execution
+        if not db_ok and row["status"] == "done":
+            print(f"  RESET   {arxiv_id}: incomplete report -> pending")
+            if not dry_run:
+                conn.execute(
+                    "UPDATE executions SET status = 'pending', result_path = NULL, error = NULL, updated_at = ? WHERE arxiv_id = ?",
+                    (datetime.now(timezone.utc).isoformat(), arxiv_id),
+                )
+                conn.commit()
+            if db_pointed and db_pointed.exists():
+                print(f"  DELETE  {arxiv_id}: {db_pointed.name} (incomplete, will re-process)")
+                if not dry_run:
+                    db_pointed.unlink()
+                stats["incomplete_deleted"] += 1
+            stats["incomplete_reset"] += 1
+        elif db_ok and not orphans and not promoted:
+            stats["already_ok"] += 1
+
+    conn.close()
+    return stats
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Quality sentinel for latest v2 markdown reports")
     parser.add_argument("--latest", type=int, default=10, help="How many latest .md reports to scan")
@@ -184,6 +329,8 @@ def main() -> int:
     )
     parser.add_argument("--json-out", default="", help="Optional path to write JSON result")
     parser.add_argument("--fail-on-warn", action="store_true", help="Exit non-zero when thresholds are violated")
+    parser.add_argument("--fix", action="store_true", help="Fix duplicates and reset incomplete reports")
+    parser.add_argument("--dry-run", action="store_true", help="With --fix, show what would happen without changing anything")
     args = parser.parse_args()
 
     data_dir = Path(args.data_dir).resolve()
@@ -193,6 +340,17 @@ def main() -> int:
 
     all_md_files = sorted(data_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
     md_total_count = len(all_md_files)
+
+    # --fix mode: scan and repair
+    if args.fix:
+        fix_files = all_md_files[: args.latest] if args.latest != 10 else all_md_files  # default=scan all
+        print(f"fix mode: scanning {len(fix_files)} of {md_total_count} md files{' (dry-run)' if args.dry_run else ''}")
+        stats = run_fix(data_dir, fix_files, dry_run=args.dry_run)
+        print(f"\nfix results:")
+        for k, v in stats.items():
+            print(f"  {k}={v}")
+        return 0
+
     md_files = all_md_files[: args.latest]
     if not md_files:
         print(f"ERROR: no markdown files found in {data_dir}")
