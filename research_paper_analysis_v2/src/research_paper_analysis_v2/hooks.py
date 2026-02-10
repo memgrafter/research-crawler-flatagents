@@ -48,11 +48,26 @@ from flatagents import get_logger
 logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
-# Prep I/O concurrency defaults — easy to tweak, overridable via env / CLI.
+# Concurrency caps — all in one place, all env-overridable.
 # ---------------------------------------------------------------------------
-PREP_DOWNLOAD_CONCURRENCY = int(os.environ.get("RPA_V2_PREP_DOWNLOAD_CONCURRENCY", "20"))
-PREP_EXTRACT_CONCURRENCY = int(os.environ.get("RPA_V2_PREP_EXTRACT_CONCURRENCY", "20"))
-PREP_CORPUS_CONCURRENCY = int(os.environ.get("RPA_V2_PREP_CORPUS_CONCURRENCY", "20"))
+# Prep I/O (local semaphores in this module)
+PREP_DOWNLOAD_CONCURRENCY = int(os.environ.get("RPA_V2_PREP_DOWNLOAD_CONCURRENCY", "60"))
+PREP_EXTRACT_CONCURRENCY = int(os.environ.get("RPA_V2_PREP_EXTRACT_CONCURRENCY", "60"))
+PREP_CORPUS_CONCURRENCY = int(os.environ.get("RPA_V2_PREP_CORPUS_CONCURRENCY", "60"))
+
+# PDF download httpx client pool (our own AsyncClient for arxiv downloads)
+HTTP_MAX_CONNECTIONS = int(os.environ.get("RPA_V2_HTTP_MAX_CONN", "128"))
+HTTP_MAX_KEEPALIVE = int(os.environ.get("RPA_V2_HTTP_KEEPALIVE", "64"))
+
+# LLM aiohttp pool (litellm reads these at import time — set in run.sh)
+# AIOHTTP_CONNECTOR_LIMIT        — total TCP connections (default 300)
+# AIOHTTP_CONNECTOR_LIMIT_PER_HOST — per-host TCP connections (default 50)
+# Both go to openrouter.ai so per-host is the binding constraint.
+AIOHTTP_CONNECTOR_LIMIT = int(os.environ.get("AIOHTTP_CONNECTOR_LIMIT", "500"))
+AIOHTTP_CONNECTOR_LIMIT_PER_HOST = int(os.environ.get("AIOHTTP_CONNECTOR_LIMIT_PER_HOST", "500"))
+# Push into env so litellm picks them up at import time (no-op if run.sh already set them).
+os.environ.setdefault("AIOHTTP_CONNECTOR_LIMIT", str(AIOHTTP_CONNECTOR_LIMIT))
+os.environ.setdefault("AIOHTTP_CONNECTOR_LIMIT_PER_HOST", str(AIOHTTP_CONNECTOR_LIMIT_PER_HOST))
 
 STOPWORDS = {
     "the", "and", "for", "with", "that", "this", "from", "into", "over", "under",
@@ -120,8 +135,8 @@ async def _get_http_client() -> httpx.AsyncClient:
                 follow_redirects=True,
                 timeout=httpx.Timeout(60.0),
                 limits=httpx.Limits(
-                    max_connections=int(os.environ.get("RPA_V2_HTTP_MAX_CONN", "128")),
-                    max_keepalive_connections=int(os.environ.get("RPA_V2_HTTP_KEEPALIVE", "64")),
+                    max_connections=HTTP_MAX_CONNECTIONS,
+                    max_keepalive_connections=HTTP_MAX_KEEPALIVE,
                 ),
             )
     return _HTTP_CLIENT
