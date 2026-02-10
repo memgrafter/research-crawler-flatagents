@@ -81,6 +81,8 @@ STOPWORDS = {
 _CONN_CACHE_LOCK = threading.Lock()
 _ARXIV_CONN_CACHE: Dict[str, sqlite3.Connection] = {}
 _V2_CONN_CACHE: Dict[str, sqlite3.Connection] = {}
+# Thread-local cache for corpus signal connections (one per pool thread).
+_CORPUS_THREAD_LOCAL = threading.local()
 _V2_WRITE_LOCK: Optional[asyncio.Lock] = None
 
 # Prep I/O singletons (created lazily on first use).
@@ -548,9 +550,35 @@ class V2Hooks(LoggingHooks):
 
         return context
 
+    def _corpus_conn_for_thread(self) -> Optional[sqlite3.Connection]:
+        """Return a per-thread read-only connection to the arxiv DB."""
+        path = Path(self._db_path)
+        if not path.exists():
+            return None
+
+        resolved = str(path.resolve())
+        conn = getattr(_CORPUS_THREAD_LOCAL, "conn", None)
+        cached_path = getattr(_CORPUS_THREAD_LOCAL, "path", None)
+
+        if conn is not None and cached_path == resolved:
+            return conn
+
+        timeout_s = float(os.environ.get("RPA_V2_SQLITE_TIMEOUT_SECONDS", "30"))
+        busy_timeout_ms = int(os.environ.get("RPA_V2_SQLITE_BUSY_TIMEOUT_MS", "10000"))
+
+        conn = sqlite3.connect(resolved, check_same_thread=False, timeout=max(timeout_s, 1.0))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute(f"PRAGMA busy_timeout = {max(busy_timeout_ms, 1)}")
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
+
+        _CORPUS_THREAD_LOCAL.conn = conn
+        _CORPUS_THREAD_LOCAL.path = resolved
+        return conn
+
     def _collect_corpus_signals_sync(
         self,
-        conn: sqlite3.Connection,
         arxiv_id: str,
         title: str,
         abstract: str,
@@ -558,6 +586,17 @@ class V2Hooks(LoggingHooks):
         neighbors_used: int,
     ) -> Dict[str, Any]:
         """Pure sync corpus signal collection. Runs in thread pool."""
+        conn = self._corpus_conn_for_thread()
+        if conn is None:
+            return {
+                "corpus_signals": {
+                    "status": "db_unavailable",
+                    "summary": "Corpus database unavailable; proceeding with paper-only analysis.",
+                },
+                "corpus_neighbors": [],
+                "neighbors_considered": 0,
+                "neighbors_used": 0,
+            }
         current_paper_id = self._paper_id_for_arxiv(conn, arxiv_id)
         rows = self._search_neighbors(conn, title, abstract, current_paper_id, neighbors_considered)
 
@@ -589,26 +628,15 @@ class V2Hooks(LoggingHooks):
         }
 
     async def _collect_corpus_signals(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        conn = self._conn_or_none()
         title = self._norm(context.get("title"))
         abstract = self._norm(context.get("abstract"))
         arxiv_id = self._norm(context.get("arxiv_id"))
-
-        if not conn:
-            context["corpus_signals"] = {
-                "status": "db_unavailable",
-                "summary": "Corpus database unavailable; proceeding with paper-only analysis.",
-            }
-            context["corpus_neighbors"] = []
-            context["neighbors_considered"] = 0
-            context["neighbors_used"] = 0
-            return context
 
         t0 = time.perf_counter()
         async with _get_corpus_sem():
             result = await asyncio.to_thread(
                 self._collect_corpus_signals_sync,
-                conn, arxiv_id, title, abstract,
+                arxiv_id, title, abstract,
                 self._neighbors_considered, self._neighbors_used,
             )
 
