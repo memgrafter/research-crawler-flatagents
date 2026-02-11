@@ -59,9 +59,51 @@ _TRANSIENT_PATTERNS = (
 )
 
 # Per-model 429 gates — each model has its own asyncio.Event, starts open (set).
-# Cleared on 429 detection for that model, re-set after cooldown.
+# Cleared on 429 detection for that model, re-set after cooldown / reset header.
 _RATE_LIMIT_GATES: Dict[str, asyncio.Event] = {}
-_RATE_LIMIT_COOLDOWN = int(os.environ.get("RPA_V2_429_COOLDOWN_SECS", "1"))
+_RATE_LIMIT_UNTIL_TS: Dict[str, float] = {}
+_RATE_LIMIT_COOLDOWN = float(os.environ.get("RPA_V2_429_COOLDOWN_SECS", "1"))
+_RATE_LIMIT_RESET_JITTER_SECS = float(os.environ.get("RPA_V2_429_RESET_JITTER_SECS", "0.35"))
+
+# Canonical model keys used for per-model gating.
+_CHEAP_MODEL_KEY = os.environ.get(
+    "RPA_V2_CHEAP_MODEL_KEY",
+    "openrouter/arcee-ai/trinity-large-preview:free",
+)
+_EXPENSIVE_MODEL_KEY = os.environ.get(
+    "RPA_V2_EXPENSIVE_MODEL_KEY",
+    "openrouter/openrouter/pony-alpha",
+)
+
+
+def _normalize_model_key(model: Optional[str]) -> str:
+    if not model:
+        return "unknown"
+
+    raw = str(model).strip()
+    lowered = raw.lower()
+
+    if "trinity-large-preview" in lowered or "prototype_structured" in lowered:
+        return _CHEAP_MODEL_KEY
+    if "pony-alpha" in lowered or "prototype_reasoning" in lowered:
+        return _EXPENSIVE_MODEL_KEY
+
+    return raw
+
+
+def is_model_rate_limited(model: str) -> bool:
+    key = _normalize_model_key(model)
+    ev = _RATE_LIMIT_GATES.get(key)
+    return ev is not None and not ev.is_set()
+
+
+def is_cheap_model_rate_limited() -> bool:
+    return is_model_rate_limited(_CHEAP_MODEL_KEY)
+
+
+def is_expensive_model_rate_limited() -> bool:
+    return is_model_rate_limited(_EXPENSIVE_MODEL_KEY)
+
 
 # Dynamic analyzing->wrap watermark mode for pony.
 # Default watermark is 300; temporarily drop to 100 for 60s when we see
@@ -81,11 +123,12 @@ def get_analyzing_wrap_watermark() -> int:
 
 def get_rate_limit_gate(model: str) -> asyncio.Event:
     """Lazy-init a per-model 429 gate (must be called from event loop)."""
-    if model not in _RATE_LIMIT_GATES:
+    key = _normalize_model_key(model)
+    if key not in _RATE_LIMIT_GATES:
         ev = asyncio.Event()
         ev.set()  # open
-        _RATE_LIMIT_GATES[model] = ev
-    return _RATE_LIMIT_GATES[model]
+        _RATE_LIMIT_GATES[key] = ev
+    return _RATE_LIMIT_GATES[key]
 
 
 def any_rate_limit_gate_closed() -> bool:
@@ -99,6 +142,128 @@ def _is_transient(error: str) -> bool:
 
 def _is_rate_limit(error: str) -> bool:
     return "429" in error or "RateLimitError" in error or "rate_limit" in error.lower()
+
+
+def _parse_rate_limit_reset_ts(error: str) -> Optional[float]:
+    """Parse X-RateLimit-Reset from error text and return unix ts (seconds)."""
+    m = re.search(r"X-RateLimit-Reset\"?\s*[:=]\s*\"?(\d{10,16})\"?", error, re.IGNORECASE)
+    if not m:
+        m = re.search(r"x-ratelimit-reset\s*[:=]\s*(\d{10,16})", error, re.IGNORECASE)
+    if not m:
+        return None
+
+    try:
+        raw = int(m.group(1))
+    except ValueError:
+        return None
+
+    # OpenRouter emits epoch milliseconds; support seconds too.
+    if raw >= 1_000_000_000_000:
+        return raw / 1000.0
+    return float(raw)
+
+
+def _parse_retry_after_seconds(error: str) -> Optional[float]:
+    """Best-effort parse of Retry-After seconds from error text."""
+    m = re.search(r"Retry-After\"?\s*[:=]\s*\"?(\d+(?:\.\d+)?)\"?", error, re.IGNORECASE)
+    if not m:
+        m = re.search(r"retry-after\s*[:=]\s*(\d+(?:\.\d+)?)", error, re.IGNORECASE)
+    if not m:
+        return None
+    try:
+        return float(m.group(1))
+    except ValueError:
+        return None
+
+
+def _parse_rate_limit_model_hint(error: str) -> Optional[str]:
+    """Best-effort model key extraction from OpenRouter rate-limit messages."""
+    high_demand = re.search(r"High demand for\s+([^\s\",}]+)", error, re.IGNORECASE)
+    if high_demand:
+        return _normalize_model_key(high_demand.group(1).strip())
+
+    rpm_key = re.search(r"limit_rpm/([^\"\s]+)", error, re.IGNORECASE)
+    if not rpm_key:
+        return None
+
+    token = rpm_key.group(1).strip("/")
+    parts = token.split("/")
+    if len(parts) >= 2:
+        return _normalize_model_key(f"{parts[0]}/{parts[1]}")
+    return _normalize_model_key(token) if token else None
+
+
+def _resolve_rate_limit_model(context: Dict[str, Any], error: str) -> str:
+    """Resolve best model key for a rate-limit event from context + error text."""
+    candidates: List[Optional[str]] = [
+        context.get("model"),
+        context.get("last_model"),
+    ]
+
+    profiles = context.get("_profiles") or {}
+    if isinstance(profiles, dict):
+        profile_name = profiles.get("override") or profiles.get("default")
+        profile_map = profiles.get("profiles") or profiles.get("model_profiles") or {}
+        if isinstance(profile_map, dict) and profile_name in profile_map:
+            profile = profile_map.get(profile_name) or {}
+            if isinstance(profile, dict):
+                candidates.append(profile.get("name"))
+
+    candidates.append(_parse_rate_limit_model_hint(error))
+
+    for candidate in candidates:
+        key = _normalize_model_key(candidate)
+        if key != "unknown":
+            return key
+
+    return "unknown"
+
+
+def _rate_limit_wait_seconds(error: str) -> Tuple[Optional[float], str]:
+    """Return (wait_seconds, source) where source is reset_header/retry_after/fallback."""
+    now = time.time()
+    reset_ts = _parse_rate_limit_reset_ts(error)
+    if reset_ts is not None:
+        return max(0.0, reset_ts - now), "reset_header"
+
+    retry_after = _parse_retry_after_seconds(error)
+    if retry_after is not None:
+        return max(0.0, retry_after), "retry_after"
+
+    return None, "fallback"
+
+
+def _close_rate_limit_gate(model: str, wait_seconds: float, source: str) -> Tuple[float, float]:
+    """Close a model gate and schedule reopen; returns (delay_seconds, until_ts)."""
+    model_key = _normalize_model_key(model)
+    gate = get_rate_limit_gate(model_key)
+    now = time.time()
+
+    target_wait = max(0.0, wait_seconds)
+    if target_wait > 0:
+        target_wait += max(0.0, _RATE_LIMIT_RESET_JITTER_SECS)
+
+    until_ts = now + target_wait
+    previous_until = _RATE_LIMIT_UNTIL_TS.get(model_key, 0.0)
+    if previous_until > until_ts:
+        until_ts = previous_until
+
+    _RATE_LIMIT_UNTIL_TS[model_key] = until_ts
+    if gate.is_set():
+        gate.clear()
+
+    delay = max(0.0, until_ts - now)
+    loop = asyncio.get_running_loop()
+
+    def _maybe_reopen(model_name: str = model_key) -> None:
+        current_until = _RATE_LIMIT_UNTIL_TS.get(model_name, 0.0)
+        if time.time() >= current_until:
+            get_rate_limit_gate(model_name).set()
+
+    loop.call_later(delay, _maybe_reopen)
+    logger.warning("429 on %s — gate closed for %.1fs (%s)", model_key, delay, source)
+    return delay, until_ts
+
 
 # ---------------------------------------------------------------------------
 # Concurrency caps — all in one place, all env-overridable.
@@ -600,13 +765,17 @@ class V2Hooks(LoggingHooks):
             if _is_transient(error_str):
                 # Fire per-model 429 gate if rate-limited
                 if _is_rate_limit(error_str):
-                    model = context.get("model") or context.get("last_model") or "unknown"
-                    gate = get_rate_limit_gate(model)
-                    if gate.is_set():
-                        gate.clear()
-                        loop = asyncio.get_event_loop()
-                        loop.call_later(_RATE_LIMIT_COOLDOWN, gate.set)
-                        logger.warning("429 on %s — gate closed for %ds", model, _RATE_LIMIT_COOLDOWN)
+                    model = _resolve_rate_limit_model(context, error_str)
+                    parsed_wait, source = _rate_limit_wait_seconds(error_str)
+                    wait_seconds = parsed_wait if parsed_wait is not None else _RATE_LIMIT_COOLDOWN
+                    delay, until_ts = _close_rate_limit_gate(model, wait_seconds, source)
+                    logger.warning(
+                        "Rate-limit window model=%s source=%s until=%s wait=%.1fs",
+                        model,
+                        source,
+                        datetime.fromtimestamp(until_ts, tz=timezone.utc).isoformat(),
+                        delay,
+                    )
 
                     # Message-based pony mode (rolling 60s):
                     # when OpenRouter says pony is high-demand and capped at 100 RPM,

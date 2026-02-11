@@ -79,8 +79,7 @@ data:
     write_key_outcome:
       agent: key_outcome_writer
       execution:
-        type: retry
-        backoffs: [2, 8]
+        type: default
       input:
         title: context.title
         authors: context.authors
@@ -95,8 +94,7 @@ data:
     write_why_hypotheses:
       agent: why_hypothesis_writer
       execution:
-        type: retry
-        backoffs: [2, 8]
+        type: default
       input:
         title: context.title
         key_outcome: context.key_outcome
@@ -113,8 +111,7 @@ data:
     write_reproduction:
       agent: reproduction_writer
       execution:
-        type: retry
-        backoffs: [2, 8]
+        type: default
       input:
         title: context.title
         key_outcome: context.key_outcome
@@ -130,8 +127,7 @@ data:
     write_limits_confidence:
       agent: limits_confidence_writer
       execution:
-        type: retry
-        backoffs: [2, 8]
+        type: default
       input:
         title: context.title
         key_outcome: context.key_outcome
@@ -147,8 +143,7 @@ data:
     write_open_questions:
       agent: open_questions_writer
       execution:
-        type: retry
-        backoffs: [2, 8]
+        type: default
       input:
         title: context.title
         key_outcome: context.key_outcome
@@ -169,8 +164,7 @@ data:
     assemble_report:
       agent: report_assembler
       execution:
-        type: retry
-        backoffs: [2, 8]
+        type: default
       input:
         title: context.title
         arxiv_id: context.arxiv_id
@@ -190,8 +184,7 @@ data:
     judge_report:
       agent: completeness_judge
       execution:
-        type: retry
-        backoffs: [2, 8]
+        type: default
       input:
         report_body: context.report_body
       output_to_context:
@@ -213,8 +206,7 @@ data:
     targeted_repair_once:
       agent: targeted_repair
       execution:
-        type: retry
-        backoffs: [2, 8]
+        type: default
       input:
         report_body: context.report_body
       output_to_context:

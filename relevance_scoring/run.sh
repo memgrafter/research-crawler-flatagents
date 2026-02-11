@@ -67,20 +67,20 @@ if [ "$SKIP_INSTALL" = true ]; then
     echo "Skipping dependency installs."
 else
     echo "Installing dependencies..."
-    if [ "$UPGRADE" = true ] || needs_install flatagents relevance_scoring; then
+    if [ "$UPGRADE" = true ] || needs_install flatmachines relevance_scoring; then
         if [ "$LOCAL_INSTALL" = true ]; then
-            echo "  - Installing flatagents from local source..."
+            echo "  - Installing flatmachines from local source..."
             if [ "$UPGRADE" = true ]; then
-                uv pip install --python "$VENV_PATH/bin/python" -U -e "$SCRIPT_DIR/../..[litellm]"
+                uv pip install --python "$VENV_PATH/bin/python" -U -e "$SCRIPT_DIR/../../flatagents/sdk/python/flatmachines"
             else
-                uv pip install --python "$VENV_PATH/bin/python" -e "$SCRIPT_DIR/../..[litellm]"
+                uv pip install --python "$VENV_PATH/bin/python" -e "$SCRIPT_DIR/../../flatagents/sdk/python/flatmachines"
             fi
         else
-            echo "  - Installing flatagents from PyPI..."
+            echo "  - Installing flatmachines from PyPI..."
             if [ "$UPGRADE" = true ]; then
-                uv pip install --python "$VENV_PATH/bin/python" -U "flatagents[litellm]"
+                uv pip install --python "$VENV_PATH/bin/python" -U "flatmachines>=1.1.1"
             else
-                uv pip install --python "$VENV_PATH/bin/python" "flatagents[litellm]"
+                uv pip install --python "$VENV_PATH/bin/python" "flatmachines>=1.1.1"
             fi
         fi
 

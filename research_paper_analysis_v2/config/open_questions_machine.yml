@@ -27,8 +27,7 @@ data:
     write:
       agent: writer
       execution:
-        type: retry
-        backoffs: [2, 8, 16, 35]
+        type: default
       input:
         title: context.title
         key_outcome: context.key_outcome

@@ -2,7 +2,7 @@
 name = "reverse_citation_enrichment"
 version = "0.1.0"
 description = "OpenAlex reverse-citation enrichment for the research crawler"
-dependencies = ["flatagents[litellm]>=0.8.1", "httpx"]
+dependencies = ["flatmachines>=1.1.1", "httpx"]
 requires-python = ">=3.10"
 
 [build-system]

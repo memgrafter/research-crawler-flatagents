@@ -33,6 +33,20 @@ echo "--- arXiv Research Crawler ---"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
+# arXiv API defaults (override via env if needed)
+export ARXIV_EXPORT_HOST="${ARXIV_EXPORT_HOST:-export.arxiv.org}"
+export ARXIV_API_URL="${ARXIV_API_URL:-https://${ARXIV_EXPORT_HOST}/api/query}"
+if [ -z "$ARXIV_CONTACT_EMAIL" ] && [ -n "$OPENALEX_MAILTO" ]; then
+    export ARXIV_CONTACT_EMAIL="$OPENALEX_MAILTO"
+fi
+if [ -z "$ARXIV_USER_AGENT" ]; then
+    if [ -n "$ARXIV_CONTACT_EMAIL" ]; then
+        export ARXIV_USER_AGENT="research-crawler/0.1 (mailto:${ARXIV_CONTACT_EMAIL})"
+    else
+        export ARXIV_USER_AGENT="research-crawler/0.1"
+    fi
+fi
+
 ARGS_STR="${PASSTHROUGH_ARGS[*]}"
 if [[ "$ARGS_STR" == *"fetch_citations"* ]] && [ -z "$OPENALEX_MAILTO" ]; then
     echo "Error: OPENALEX_MAILTO environment variable not set"
@@ -66,20 +80,20 @@ needs_install() {
 }
 
 echo "Installing dependencies..."
-if [ "$UPGRADE" = true ] || needs_install flatagents arxiv_crawler; then
+if [ "$UPGRADE" = true ] || needs_install flatmachines arxiv_crawler; then
     if [ "$LOCAL_INSTALL" = true ]; then
-        echo "  - Installing flatagents from local source..."
+        echo "  - Installing flatmachines from local source..."
         if [ "$UPGRADE" = true ]; then
-            uv pip install --python "$VENV_PATH/bin/python" -U -e "$SCRIPT_DIR/../..[litellm]"
+            uv pip install --python "$VENV_PATH/bin/python" -U -e "$SCRIPT_DIR/../../flatagents/sdk/python/flatmachines"
         else
-            uv pip install --python "$VENV_PATH/bin/python" -e "$SCRIPT_DIR/../..[litellm]"
+            uv pip install --python "$VENV_PATH/bin/python" -e "$SCRIPT_DIR/../../flatagents/sdk/python/flatmachines"
         fi
     else
-        echo "  - Installing flatagents from PyPI..."
+        echo "  - Installing flatmachines from PyPI..."
         if [ "$UPGRADE" = true ]; then
-            uv pip install --python "$VENV_PATH/bin/python" -U "flatagents[litellm]"
+            uv pip install --python "$VENV_PATH/bin/python" -U "flatmachines>=1.1.1"
         else
-            uv pip install --python "$VENV_PATH/bin/python" "flatagents[litellm]"
+            uv pip install --python "$VENV_PATH/bin/python" "flatmachines>=1.1.1"
         fi
     fi
 

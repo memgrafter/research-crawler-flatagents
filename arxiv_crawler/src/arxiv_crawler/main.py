@@ -11,7 +11,7 @@ import asyncio
 from pathlib import Path
 from typing import List
 
-from flatagents import FlatMachine, setup_logging, get_logger
+from flatmachines import FlatMachine, setup_logging, get_logger
 
 from .hooks import CrawlerHooks
 
