@@ -61,7 +61,7 @@ _TRANSIENT_PATTERNS = (
 # Per-model 429 gates — each model has its own asyncio.Event, starts open (set).
 # Cleared on 429 detection for that model, re-set after cooldown.
 _RATE_LIMIT_GATES: Dict[str, asyncio.Event] = {}
-_RATE_LIMIT_COOLDOWN = int(os.environ.get("RPA_V2_429_COOLDOWN_SECS", "10"))
+_RATE_LIMIT_COOLDOWN = int(os.environ.get("RPA_V2_429_COOLDOWN_SECS", "1"))
 
 
 def get_rate_limit_gate(model: str) -> asyncio.Event:
