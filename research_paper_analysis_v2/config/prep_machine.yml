@@ -66,8 +66,7 @@ data:
     write_key_outcome:
       agent: key_outcome_writer
       execution:
-        type: retry
-        backoffs: [2, 8, 16]
+        type: default
       input:
         title: context.title
         authors: context.authors

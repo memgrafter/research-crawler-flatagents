@@ -70,7 +70,7 @@ _MAX_EXPENSIVE = int(os.environ.get("RPA_V2_MAX_EXPENSIVE", "0"))
 _MAX_WRAP = int(os.environ.get("RPA_V2_MAX_WRAP", "0"))
 # If prepped buffer falls below this watermark, prioritize prep over wrap
 # so arcee capacity goes to key_outcome_writer first.
-_PREPPED_LOW_WATERMARK = int(os.environ.get("RPA_V2_PREPPED_LOW_WATERMARK", "25"))
+_PREPPED_LOW_WATERMARK = int(os.environ.get("RPA_V2_PREPPED_LOW_WATERMARK", "0"))
 
 # Shutdown/drain behavior
 # First Ctrl+C drains in-flight tasks (no new launches). 0 = wait indefinitely.
@@ -749,9 +749,16 @@ def _pick_next(
       2. New expensive (highest-value model usage)
       3. New prep vs wrap based on prepped-buffer watermark
     """
-    # Per-model 429 gate — if any model is rate-limited, skip LLM phases
-    from research_paper_analysis_v2.hooks import any_rate_limit_gate_closed, get_analyzing_wrap_watermark
-    llm_gated = any_rate_limit_gate_closed()
+    # Per-model 429 gates:
+    # - prep + wrap use cheap model
+    # - expensive uses reasoning model
+    from research_paper_analysis_v2.hooks import (
+        get_analyzing_wrap_watermark,
+        is_cheap_model_rate_limited,
+        is_expensive_model_rate_limited,
+    )
+    cheap_gated = is_cheap_model_rate_limited()
+    expensive_gated = is_expensive_model_rate_limited()
 
     # Keep a minimum prepped buffer so prep can feed expensive (pony-alpha).
     prefer_prep_over_wrap = False
@@ -793,39 +800,45 @@ def _pick_next(
         # Strict gate: while prepped buffer is low, do not spend arcee on wrap.
         if prefer_prep_over_wrap and machine_name == "wrap-pipeline":
             continue
-        # Skip LLM-phase resumes while rate-limited
-        if llm_gated and machine_name != "prep-pipeline":
+        # Skip resumes for phases whose model is currently rate-limited.
+        if machine_name in {"prep-pipeline", "wrap-pipeline"} and cheap_gated:
+            continue
+        if machine_name == "expensive-pipeline" and expensive_gated:
             continue
         for exec_id in find_incomplete_executions(machine_name):
             if exec_id not in resuming:
                 resuming.add(exec_id)
                 return (resume_machine(exec_id, machine_name, config_file), sem, "resumed")
 
-    if not prep_only and not llm_gated:
-        # 2. New expensive
-        if expensive_sem is None or expensive_sem._value > 0:
+    if not prep_only:
+        # 2. New expensive (only when expensive model is open)
+        if not expensive_gated and (expensive_sem is None or expensive_sem._value > 0):
             claimed = claim_for_expensive(conn, 1)
             if claimed:
                 resuming.add(claimed[0]["execution_id"])
                 return (run_expensive(claimed[0]), expensive_sem, "expensive")
 
         # 3. New prep when prepped buffer is low (before wrap)
-        if prefer_prep_over_wrap and (prep_sem is None or prep_sem._value > 0):
+        if (
+            prefer_prep_over_wrap
+            and not cheap_gated
+            and (prep_sem is None or prep_sem._value > 0)
+        ):
             claimed = claim_for_prep(conn, 1)
             if claimed:
                 resuming.add(claimed[0]["execution_id"])
                 return (run_prep(claimed[0]), prep_sem, "prep")
 
         # 4. New wrap (strictly blocked while prepped buffer is low)
-        if not prefer_prep_over_wrap:
+        if not prefer_prep_over_wrap and not cheap_gated:
             if wrap_sem is None or wrap_sem._value > 0:
                 claimed = claim_for_wrap(conn, 1)
                 if claimed:
                     resuming.add(claimed[0]["execution_id"])
                     return (run_wrap(claimed[0]), wrap_sem, "wrap")
 
-    # 5. New prep (always allowed; also used when llm_gated)
-    if prep_sem is None or prep_sem._value > 0:
+    # 5. New prep (only when cheap model is open)
+    if not cheap_gated and (prep_sem is None or prep_sem._value > 0):
         claimed = claim_for_prep(conn, 1)
         if claimed:
             resuming.add(claimed[0]["execution_id"])

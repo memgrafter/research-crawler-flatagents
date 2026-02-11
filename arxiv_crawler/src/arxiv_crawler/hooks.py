@@ -1,21 +1,32 @@
 import json
+import os
 import random
 import sqlite3
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
-from flatagents import MachineHooks, get_logger
+from flatmachines import MachineHooks, get_logger
 
-ARXIV_API_URL = "https://export.arxiv.org/api/query"
+ARXIV_EXPORT_HOST = os.environ.get("ARXIV_EXPORT_HOST", "export.arxiv.org")
+ARXIV_API_URL = os.environ.get("ARXIV_API_URL", f"https://{ARXIV_EXPORT_HOST}/api/query")
+ARXIV_ABS_BASE_URL = f"https://{ARXIV_EXPORT_HOST}/abs"
+ARXIV_PDF_BASE_URL = f"https://{ARXIV_EXPORT_HOST}/pdf"
 ATOM_NS = "{http://www.w3.org/2005/Atom}"
 ARXIV_NS = "{http://arxiv.org/schemas/atom}"
-USER_AGENT = "research-crawler/0.1"
+ARXIV_CONTACT_EMAIL = os.environ.get("ARXIV_CONTACT_EMAIL") or os.environ.get("OPENALEX_MAILTO", "")
+USER_AGENT = os.environ.get(
+    "ARXIV_USER_AGENT",
+    f"research-crawler/0.1 (mailto:{ARXIV_CONTACT_EMAIL})" if ARXIV_CONTACT_EMAIL else "research-crawler/0.1",
+)
+ARXIV_REQUEST_TIMEOUT_SEC = float(os.environ.get("ARXIV_REQUEST_TIMEOUT_SEC", "30"))
 RETRY_BACKOFFS = [1, 3, 30, 1, 3, 60, 1, 3, 120]  # Dwell pattern for unstable APIs
-THROTTLE_RANGE_SECONDS = (0.5, 1.5)
+# arXiv asks for no more than one request every 3 seconds.
+THROTTLE_RANGE_SECONDS = (3.0, 4.0)
 ARXIV_PAGE_SIZE = 100
 LLM_RELEVANCE_CATEGORIES = {
     "cs.CL",
@@ -113,6 +124,14 @@ def parse_bool(value: Any) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "y"}
 
 
+def _normalize_arxiv_url(url: Optional[str]) -> Optional[str]:
+    if not url:
+        return None
+    normalized = url.replace("http://arxiv.org", f"https://{ARXIV_EXPORT_HOST}")
+    normalized = normalized.replace("https://arxiv.org", f"https://{ARXIV_EXPORT_HOST}")
+    return normalized
+
+
 def parse_feed(xml_text: str) -> List[Dict[str, Any]]:
     root = ET.fromstring(xml_text)
     entries = []
@@ -150,6 +169,9 @@ def parse_feed(xml_text: str) -> List[Dict[str, Any]]:
                 pdf_url = link.attrib.get("href")
                 break
 
+        normalized_entry_url = _normalize_arxiv_url(entry_id)
+        normalized_pdf_url = _normalize_arxiv_url(pdf_url) or f"{ARXIV_PDF_BASE_URL}/{raw_id}"
+
         entries.append(
             {
                 "arxiv_id": id_info["arxiv_id"],
@@ -161,9 +183,9 @@ def parse_feed(xml_text: str) -> List[Dict[str, Any]]:
                 "primary_category": primary_category,
                 "published_at": published,
                 "updated_at": updated,
-                "pdf_url": pdf_url,
-                "entry_url": entry_id,
-                "abstract_url": entry_id,
+                "pdf_url": normalized_pdf_url,
+                "entry_url": normalized_entry_url,
+                "abstract_url": normalized_entry_url,
                 "doi": entry.findtext(f"{ARXIV_NS}doi"),
                 "journal_ref": entry.findtext(f"{ARXIV_NS}journal_ref"),
                 "comment": entry.findtext(f"{ARXIV_NS}comment"),
@@ -660,6 +682,28 @@ class CrawlerHooks(MachineHooks):
         if name not in existing:
             conn.execute(ddl)
 
+    def _parse_retry_after_seconds(self, value: Optional[str], default: float = 60.0) -> float:
+        if not value:
+            return default
+        text = str(value).strip()
+        if not text:
+            return default
+
+        # Retry-After can be either delta-seconds or HTTP-date.
+        try:
+            return max(1.0, float(text))
+        except ValueError:
+            pass
+
+        try:
+            parsed_dt = parsedate_to_datetime(text)
+            if parsed_dt.tzinfo is None:
+                parsed_dt = parsed_dt.replace(tzinfo=timezone.utc)
+            delta = (parsed_dt - datetime.now(timezone.utc)).total_seconds()
+            return max(1.0, delta)
+        except Exception:  # pylint: disable=broad-except
+            return default
+
     def _request_with_retries(self, params: Dict[str, Any]) -> httpx.Response:
         headers = {"User-Agent": USER_AGENT}
         last_error: Optional[Exception] = None
@@ -676,14 +720,24 @@ class CrawlerHooks(MachineHooks):
                 response = httpx.get(
                     ARXIV_API_URL,
                     params=params,
-                    timeout=30.0,
+                    timeout=ARXIV_REQUEST_TIMEOUT_SEC,
                     headers=headers,
+                    follow_redirects=True,
                 )
                 if response.status_code == 429:
                     retry_after = response.headers.get("Retry-After")
-                    wait_seconds = float(retry_after) if retry_after else 60.0
-                    self.logger.warning("429 received; waiting %.1fs before retry", wait_seconds)
+                    wait_seconds = self._parse_retry_after_seconds(retry_after, default=60.0)
+                    self.logger.warning(
+                        "429 received; waiting %.1fs before retry (Retry-After=%r)",
+                        wait_seconds,
+                        retry_after,
+                    )
                     time.sleep(wait_seconds)
+                    last_error = httpx.HTTPStatusError(
+                        "Rate limited (429)",
+                        request=response.request,
+                        response=response,
+                    )
                     continue
                 if response.status_code >= 500:
                     last_error = httpx.HTTPStatusError(

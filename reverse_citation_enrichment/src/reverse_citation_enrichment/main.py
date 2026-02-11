@@ -10,7 +10,7 @@ import argparse
 import asyncio
 from pathlib import Path
 
-from flatagents import FlatMachine, setup_logging, get_logger
+from flatmachines import FlatMachine, setup_logging, get_logger
 
 from .hooks import CitationHooks
 

@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import yaml
-from flatagents import MachineHooks, get_logger
+from flatmachines import MachineHooks, get_logger
 from sentence_transformers import SentenceTransformer
 
 

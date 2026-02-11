@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import httpx
-from flatagents import MachineHooks, get_logger
+from flatmachines import MachineHooks, get_logger
 
 OPENALEX_BASE_URL = "https://api.openalex.org/works"
 USER_AGENT = "research-crawler/0.1 (reverse-citation)"

@@ -28,6 +28,8 @@ Dry runs emit JSONL to stdout describing inserts/updates that would occur.
 - Database: `data/arxiv.sqlite`
 - Fetch categories: `cs.CL,cs.AI,cs.LG,stat.ML,cs.IR,cs.RO,cs.SE,cs.HC`
 - Relevance filter categories: `cs.CL,cs.AI,cs.LG,stat.ML,cs.IR,cs.RO,cs.SE,cs.HC` (`llm_relevant` column)
+- arXiv API URL: `https://export.arxiv.org/api/query` (`ARXIV_API_URL` override)
+- User-Agent: `research-crawler/0.1` or `research-crawler/0.1 (mailto:...)` if `ARXIV_CONTACT_EMAIL` is set
 
 Stored fields include abstract text plus `abstract_url` (arXiv abs page) and
 `pdf_url` so downstream agents can fetch without web search.
@@ -48,6 +50,18 @@ python -m arxiv_crawler.backfill \
   --end-date 2025-12-31 \
   --window-days 2 \
   --max-results 500
+```
+
+2024 helper script with auto-resume and conservative rate limits:
+
+```bash
+./backfill_2024.sh
+```
+
+If needed, force a specific restart day:
+
+```bash
+BACKFILL_START_DATE=2024-03-01 ./backfill_2024.sh
 ```
 
 ## Scraping Command History (Baseline)

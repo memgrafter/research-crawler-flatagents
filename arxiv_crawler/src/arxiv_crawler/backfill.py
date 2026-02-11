@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
 
-from flatagents import FlatMachine, setup_logging, get_logger
+from flatmachines import FlatMachine, setup_logging, get_logger
 
 from .hooks import CrawlerHooks
 from .main import parse_categories
@@ -112,6 +112,7 @@ def main() -> None:
 
     current = start_dt
     while current <= end_dt:
+        logger.info("Processing date: %s", current.strftime("%Y-%m-%d"))
         slice_end = min(current + timedelta(days=args.window_days), end_dt + timedelta(days=1))
         since_iso = current.isoformat()
         until_iso = (slice_end - timedelta(seconds=1)).isoformat()
