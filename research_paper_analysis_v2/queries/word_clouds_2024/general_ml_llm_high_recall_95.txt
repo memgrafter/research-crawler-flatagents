@@ -1,0 +1,2203 @@
+# Word Cloud: General ML/LLM High-Recall (~95% target coverage)
+# source: 2024 shotgun candidates + existing seeds + fixed anchors
+
+large language model
+language model
+llm
+foundation model
+transformer
+self attention
+multi-head attention
+attention mechanism
+encoder-decoder
+decoder-only
+mixture of experts
+moe
+tokenization
+context window
+long context
+pretraining
+fine-tuning
+instruction tuning
+supervised fine-tuning
+rlhf
+dpo
+ppo
+reward model
+alignment
+ai safety
+jailbreak
+hallucination
+factuality
+reasoning
+chain of thought
+agent
+agentic
+tool use
+function calling
+retrieval augmented generation
+rag
+retrieval
+reranking
+vector database
+embedding model
+knowledge graph
+semantic search
+benchmark
+evaluation
+mmlu
+gsm8k
+truthfulqa
+multimodal
+vision-language
+diffusion
+quantization
+distillation
+pruning
+inference optimization
+latency
+throughput
+scaling law
+continual learning
+domain adaptation
+interpretability
+mechanistic interpretability
+attribution
+human-ai interaction
+prompt engineering
+synthetic data
+self-supervised learning
+contrastive learning
+AI
+inference
+attention
+embedding
+pre-trained
+large-scale
+token
+3d
+high-quality
+RL
+open-source
+diffusion model
+decision-making
+safety
+align
+real-time
+zero-shot
+GPT-4
+NLP
+pre-training
+ML
+fine-grained
+fine-tuned
+llm-based
+data-driven
+end-to-end
+benchmark dataset
+black-box
+high-dimensional
+self-supervised
+GPT
+few-shot
+trade-off
+pretrained
+learning-based
+multi-modal
+SOTA
+in-context
+aligning
+multi-agent
+transformer-based
+reason
+GPU
+GNN
+fine-tune
+aligned
+domain-specific
+long-term
+retrieval-augmented
+task-specific
+in-depth
+out-of-distribution
+model-based
+2d
+low-rank
+CNN
+llama
+BERT
+f1
+time-consuming
+CLIP
+self-attention
+high-level
+GPT-3
+generation rag
+two-stage
+retrieval-augmented generation
+chain-of-thought
+well-known
+text-to-image
+multi-task
+finetuning
+transformer architecture
+transformer model
+f1 score
+low-resource
+lora
+API
+llm generate
+time-serie
+retrieval-augmented generation rag
+gradient-based
+capabilitie llm
+multimodal large
+multimodal large language
+parameter-efficient
+reasoning capabilitie
+human-like
+general-purpose
+DNN
+significant attention
+spatio-temporal
+low-dimensional
+LSTM
+multi-step
+llm agent
+llm demonstrated
+question-answering
+high-resolution
+vision transformer
+ASR
+graph-based
+retrieve
+short-term
+OOD
+physics-informed
+open-ended
+ICL
+privacy-preserving
+high-fidelity
+non-linear
+gpt-3.5
+retrieved
+diffusion-based
+llm-generated
+7b
+knowledge distillation
+cross-lingual
+plug-and-play
+llm performance
+SGD
+benchmark demonstrate
+MLP
+llm shown
+cost-effective
+long-range
+information retrieval
+semi-supervised
+llm such
+open-source llm
+safety-critical
+training-free
+EEG
+multimodal model
+multi-scale
+RGB
+text-based
+high-performance
+off-the-shelf
+VLM
+problem-solving
+PEFT
+SFT
+MRI
+PDE
+multi-view
+existing benchmark
+distill
+XAI
+state-of-the-art llm
+low-level
+resource-constrained
+evaluation benchmark
+gpt-4o
+embed
+white-box
+SLAM
+MNIST
+cross-modal
+ai-generated
+reasoning abilitie
+AUC
+CIFAR-10
+performance llm
+SSL
+test-time
+non-convex
+closed-source
+multi-layer
+DRL
+cross-domain
+model-agnostic
+mathematical reasoning
+ai agent
+multi-objective
+ai-based
+attention-based
+quantized
+f1-score
+sub-optimal
+under-explored
+worst-case
+first-order
+ground-truth
+context-aware
+meta-learning
+gemini
+human-robot
+transformer-based model
+feedback rlhf
+human feedback rlhf
+llm demonstrate
+cutting-edge
+network-based
+image-text
+EHR
+physics-based
+fine-tuning llm
+llm inference
+llm which
+open-sourced
+pretrained model
+closed-loop
+mistral
+MLLM
+UAV
+and/or
+embedding space
+VQA
+distilling
+q-learning
+ai-driven
+actor-critic
+GAN
+self-attention mechanism
+variou llm
+higher-order
+gpt-4v
+low-cost
+retrieval augmented
+deep-learning
+denoising diffusion
+real-life
+so-called
+llm like
+multi-agent reinforcement
+multi-agent reinforcement learning
+VAE
+prompt-based
+benchmark designed
+human-ai
+post-training
+multi-label
+non-trivial
+llm significantly
+labor-intensive
+multimodal data
+RNN
+potential llm
+llm output
+retrieving
+near-optimal
+complex reasoning
+MPC
+model-free
+BLEU
+post-processing
+SAM
+benchmark evaluating
+multi-level
+x-ray
+standard benchmark
+graph-structured
+llm however
+NER
+ODE
+instruction-following
+rl agent
+cross-attention
+large multimodal
+different llm
+pre-defined
+well-established
+feed-forward
+CPU
+long-form
+long-horizon
+existing llm
+spatial-temporal
+e-commerce
+reasoning large
+increasing attention
+llm-based agent
+high-order
+llm human
+long-context
+latent diffusion
+out-of-domain
+user-friendly
+in-distribution
+multi-turn
+GCN
+diffusion process
+COVID-19
+ability llm
+continuous-time
+large multimodal model
+closed-form
+step-by-step
+MARL
+knowledge llm
+message-passing
+image-based
+3d scene
+finetuned
+SQL
+llm across
+MAE
+llm become
+optimization dpo
+up-to-date
+llm exhibit
+reasoning ability
+NVIDIA
+cross-entropy
+align human
+enhance llm
+evaluate llm
+llm often
+llm perform
+benchmark dataset demonstrate
+fine-tuning sft
+preference optimization dpo
+multiple-choice
+multi-head
+pseudo-label
+high-stake
+second-order
+multi-class
+instruction-tuned
+2.0
+supervised fine-tuning sft
+learning agent
+post-hoc
+multi-robot
+llm code
+SVM
+SHAP
+multi-dimensional
+stable diffusion
+llama-2
+conditional diffusion
+llm offer
+3d object
+3d reconstruction
+comprehensive benchmark
+best-performing
+information-theoretic
+rule-based
+coarse-grained
+memory-efficient
+reason about
+3d gaussian
+graph transformer
+instruction-tuning
+MDP
+evaluation llm
+energy-efficient
+llm-driven
+such gpt-4
+distilled
+u-net
+reasoning large language
+open-domain
+autonomou agent
+state-space
+1.5
+enable llm
+resource-intensive
+proof-of-concept
+small-scale
+non-parametric
+multi-stage
+pre-train
+knowledge-intensive
+three-dimensional
+long-tail
+layer-wise
+token-level
+human-in-the-loop
+FID
+off-policy
+llm reasoning
+on-device
+three benchmark
+where llm
+llm ability
+multiple benchmark
+llm including
+llm large
+gained significant attention
+attention due
+PCA
+reasoning steps
+sampling-based
+vision-based
+logical reasoning
+cross-validation
+in-domain
+t2i
+machine-learning
+latent diffusion model
+time-varying
+IID
+attention recent
+llm-powered
+optimization-based
+llm training
+RMSE
+attention network
+long-tailed
+dataset benchmark
+reasoning process
+human-written
+2.5
+leverage llm
+how llm
+llm used
+score-based
+data-efficient
+self-consistency
+llama2
+text-to-image diffusion
+preference alignment
+llm trained
+CIFAR10
+word embedding
+human-annotated
+claude
+auto-regressive
+question-answer
+non-asymptotic
+MATH
+two-step
+while llm
+well-suited
+variou benchmark
+3.5
+tree-based
+high-frequency
+decision-maker
+non-invasive
+uncertainty-aware
+text embedding
+application llm
+text-to-image diffusion model
+data-centric
+inference-time
+IMU
+where agent
+embodied agent
+llm response
+neuro-symbolic
+MCTS
+agent learn
+benchmark including
+llm while
+llm specifically
+leveraging llm
+widely-used
+graph attention
+low-quality
+mean-field
+language agent
+retrieval model
+one-shot
+like gpt-4
+0.5
+one-step
+CIFAR-100
+text-to-speech
+alignment human
+understanding reasoning
+SNN
+PINN
+human-centric
+top-1
+DNA
+whether llm
+signal-to-noise
+non-stationary
+next-token
+transformer block
+input-output
+time-dependent
+machine-generated
+GPT4
+1d
+GPT-2
+long-standing
+llm introduce
+llm provide
+guide llm
+experiment benchmark
+gnn-based
+pre-processing
+sample-efficient
+generated llm
+sequence-to-sequence
+multiple llm
+speed-up
+ECG
+llm these
+llm knowledge
+end-user
+one-dimensional
+key-value
+code llm
+considerable attention
+current llm
+llm achieved
+garnered significant attention
+these agent
+multi-hop
+sub-task
+two-layer
+non-differentiable
+on-the-fly
+language-based
+pre-trained transformer
+1/2
+CV
+multi-source
+super-resolution
+non-iid
+expert moe
+TTS
+infinite-dimensional
+diffusion probabilistic
+human-centered
+llm not
+well-defined
+llm model
+llm variou
+open-world
+reasoning about
+k-mean
+attention layer
+enhancing llm
+llm capabilitie
+task-agnostic
+semi-structured
+multi-step reasoning
+a/b
+end-effector
+simulation-based
+aligning large
+aligning large language
+llm benchmark
+NMT
+RGB-D
+instance-level
+safety alignment
+t5
+70b
+task-relevant
+prompt llm
+which llm
+PAC
+AGI
+gpt-3.5-turbo
+human-machine
+ad-hoc
+graph embedding
+free-form
+finite-sample
+3d gaussian splatting
+llm enhance
+aligning llm
+llm demonstrated remarkable
+llm improve
+llm large language
+llm address
+popular llm
+hand-crafted
+llm increasingly
+well-studied
+non-expert
+mixture-of-expert
+next token
+safety constraint
+log-likelihood
+user-item
+SVD
+conditional diffusion model
+feature-based
+MSE
+HCI
+collision-free
+multi-domain
+evaluating llm
+human-computer
+high-resource
+diffusion probabilistic model
+follow-up
+cost-efficient
+when llm
+brain-computer
+self-correction
+6g
+augmented generation rag
+llm achieve
+benchmark result
+these llm
+prompting llm
+mixed-integer
+feature alignment
+cnn-based
+cross-modality
+ai-assisted
+self-training
+self-driving
+two-dimensional
+non-uniform
+mixture expert moe
+benchmark evaluate
+advanced llm
+benchmark code
+llm generating
+multiple agent
+llm also
+GUI
+llm generation
+multi-armed
+CSI
+KAN
+improve llm
+several benchmark
+attention recent years
+llm more
+hyper-parameter
+state-action
+pretrained language
+pixel-level
+ROC
+pretrained language model
+capability llm
+pre-trained llm
+MBPP
+training llm
+llm evaluation
+NAS
+flow-based
+1.0
+OCR
+np-hard
+open-vocabulary
+preference-based
+co-design
+efficient llm
+ANN
+multi-granularity
+transformer vit
+llm propose
+performance benchmark
+benchmark such
+distillation kd
+knowledge distillation kd
+llm present
+llm alignment
+safety concern
+closed-source llm
+next-generation
+third-party
+role-playing
+SSM
+ai-powered
+reasoning llm
+abilitie llm
+fine-tune llm
+alignment large
+attention weight
+graph attention network
+commonsense reasoning
+communication-efficient
+next-token prediction
+alignment large language
+multimodal llm
+AUROC
+3d point
+cold-start
+retrieval performance
+structure-based
+multi-channel
+high-speed
+task-oriented
+GPS
+understanding llm
+ensuring safety
+safety-critical application
+llm may
+high-performing
+NLI
+BCI
+language-specific
+sentence-level
+aligned llm
+llama2-7b
+llm still
+these benchmark
+llm but
+development llm
+llama model
+llm remain
+two benchmark
+fine-tuned llm
+sim-to-real
+attention heads
+bi-level
+self-improvement
+d4rl
+text-to-image t2i
+intelligent agent
+mt-bench
+well-calibrated
+on-policy
+top-1 accuracy
+chain-of-thought reasoning
+attention module
+llm fine-tuning
+reasoning processe
+GLUE
+ROUGE
+transformer layer
+game-theoretic
+node embedding
+object-centric
+dense retrieval
+reinforcement learning agent
+high-precision
+agent capable
+llm application
+graph reasoning
+rl-based
+discrete-time
+low-frequency
+MRR
+vision transformer vit
+three benchmark dataset
+limitation llm
+llm recently
+multimodal model lmms
+llm demonstrated impressive
+llm they
+agent large
+demonstrate llm
+llm effectively
+first benchmark
+llm behavior
+however llm
+energy-based
+spatial reasoning
+top-down
+well-being
+text-to-video
+kolmogorov-arnold
+NTK
+fact-checking
+event-based
+single-step
+language model agent
+gpt-3.5 gpt-4
+mini-batch
+multi-modality
+3d model
+multimodal learning
+human-level
+alignment technique
+benchmark evaluation
+self-generated
+llm both
+13b
+llm like gpt-4
+visual reasoning
+retrieval ir
+information retrieval ir
+pre-trained diffusion
+llm potential
+align llm
+finetune
+benchmark designed evaluate
+hallucination large
+much attention
+click-through
+polynomial-time
+cloud-based
+self-reflection
+data-dependent
+agent which
+context-dependent
+enable agent
+non-english
+graph-level
+llm such gpt-4
+token prediction
+pretraining data
+generative diffusion
+dp-sgd
+NLG
+similarity-based
+denoising diffusion probabilistic
+3d object detection
+t2i model
+gpt model
+pretrain
+llm different
+model-generated
+input token
+number agent
+bottom-up
+built-in
+user-defined
+among agent
+reason behind
+high-risk
+reasoning performance
+MCMC
+class-incremental
+multimodal information
+multimodal fusion
+optimization ppo
+policy optimization ppo
+llm revolutionized
+llm understand
+llm enable
+pre-trained diffusion model
+llm experiment
+less attention
+introduce benchmark
+reasoning however
+agent large language
+transformer-based architecture
+benchmark performance
+llm excel
+better align
+diffusion model generate
+SNR
+conversational agent
+4.0
+4d
+cross-task
+knowledge reasoning
+agent-based
+0.1
+3.1
+over-smoothing
+post-training quantization
+distribution-free
+llm safety
+MTL
+encoder-only
+lower-dimensional
+intermediate reasoning
+reasoning planning
+min-max
+mistral-7b
+two-phase
+divide-and-conquer
+learning llm
+teacher-student
+text-image
+modality-specific
+gradient-free
+open-set
+off-road
+KGC
+reasoning capabilitie large
+each token
+hallucinate
+proprietary llm
+multimodal language
+4-bit
+primal-dual
+IRL
+top-performing
+pre-collected
+transformer vits
+vision transformer vits
+challenge llm
+embedding-based
+these embedding
+llm emerged
+each agent
+hallucination large language
+high-throughput
+mitigate hallucination
+two-level
+bert model
+other agent
+content-based
+causal reasoning
+CIFAR100
+CPS
+covid-19 pandemic
+MIMIC-IV
+FFN
+2d 3d
+over-parameterized
+single llm
+attention score
+resource-efficient
+agent behavior
+multi-round
+diffusion policy
+NLU
+i/o
+HTML
+a100
+text-to-sql
+learning benchmark
+two-player
+real-valued
+long-distance
+modern llm
+CAM
+CARLA
+step-wise
+cyber-physical
+concept-based
+5g
+SDE
+lower-level
+diffusion transformer
+domain-invariant
+four benchmark
+knowledge-based
+llm e.g
+in-house
+held-out
+generative pre-trained transformer
+human-generated
+embedding vector
+agent interaction
+assess llm
+document-level
+multi-model
+TSP
+auto-encoder
+medical llm
+2d image
+0.05
+0.95
+red-teaming
+DQN
+LIME
+diffusion model diffusion
+llm against
+reasoning capability
+low-resolution
+llm when
+widespread attention
+llm natural
+multimodal dataset
+llm then
+experiment benchmark dataset
+challenging benchmark
+two-fold
+benchmark specifically
+propose benchmark
+generation llm
+error-prone
+limited attention
+self-supervision
+out-of-sample
+HPC
+CTR
+7b model
+3d point cloud
+video diffusion
+top-k
+RNA
+MLE
+non-stationarity
+COCO
+1.8
+0.9
+alignment performance
+self-attention layer
+mixtral
+finetuning large
+monte-carlo
+cross-dataset
+diffusion generative
+three-stage
+finite-dimensional
+transformer encoder
+k-nearest
+SAC
+SER
+black-box llm
+floating-point
+multilingual llm
+power-law
+text-only
+text-guided
+non-euclidean
+imagenet-1k
+ERM
+PLM
+SAT
+audio-visual
+weakly-supervised
+re-identification
+discrete token
+human-interpretable
+llm llm
+benchmark which
+alignment llm
+alignment algorithm
+generative diffusion model
+cot reasoning
+PTQ
+ICU
+FNO
+multi-sensor
+SAR
+FPGA
+DSC
+open llm
+kernel-based
+single-agent
+bias llm
+retrieval augmentation
+class-specific
+llm-as-a-judge
+transformer network
+result llm
+problem llm
+llm human preference
+high-probability
+user-specified
+aligned human
+utilizing llm
+pretrained large
+indicate llm
+re-training
+llm experimental
+llm current
+llm prompt
+benchmark however
+attention recently
+reveal llm
+current benchmark
+higher-quality
+llm such chatgpt
+llm work
+significant attention due
+impact llm
+agent however
+llm extensive
+across benchmark
+reasoning benchmark
+integration llm
+llm further
+align well
+general-purpose llm
+reasoning across
+real-world benchmark
+v2
+risk-sensitive
+moe model
+parameter-free
+0.01
+image 3d
+fairness-aware
+semi-automated
+system-level
+in-situ
+denoising diffusion model
+HRI
+MIMIC-III
+zeroth-order
+plug-in
+llm only
+fully-connected
+information llm
+1.7
+1.6
+LMM
+TF-IDF
+SSIM
+counterfactual reasoning
+channel-wise
+dall-e
+re-ranking
+single-cell
+DDIM
+0.98
+DDPM
+uses llm
+data-generating
+cost-effectiveness
+public benchmark
+deployment llm
+structure-aware
+enhance reasoning
+enhance safety
+reasoning step
+transformer-based language
+transformer-based language model
+reasoning capabilitie llm
+smaller llm
+analysi llm
+context-based
+low-latency
+reasoning dataset
+alignment module
+output token
+next token prediction
+multimodal language model
+user-centric
+semantic alignment
+reasoning chain
+in-the-wild
+non-gaussian
+MIMO
+BEV
+1/3
+3d structure
+LDM
+YOLO
+data-scarce
+decoder-only transformer
+non-intrusive
+transformer-based large
+transformer-based large language
+llm architecture
+embedding which
+attention paid
+llm struggle
+gained attention
+integrating llm
+llm experimental result
+llama mistral
+llm analyze
+diffusion model dms
+which align
+assessment llm
+benchmark like
+response llm
+llm first
+attracted significant attention
+advancement multimodal
+extensive experiment benchmark
+process diffusion
+process diffusion model
+mechanism transformer
+llm become increasingly
+agent interact
+llm evaluate
+ai-enabled
+not align
+pair-wise
+benchmark while
+however existing benchmark
+no-regret
+reasoning paths
+TTA
+JSON
+CAD
+self-evaluation
+self-adaptive
+bio-inspired
+score distillation
+diffusion prior
+bert roberta
+llm context
+knowledge graph embedding
+behavior llm
+bi-directional
+recall f1
+100k
+8b
+GCL
+goal-oriented
+LDA
+alignment process
+quantize
+word-level
+kullback-leibler
+train llm
+easy-to-use
+internet-scale
+classifier-free
+llm recommendation
+navier-stoke
+7b parameter
+cifar-10 cifar-100
+0.8
+decision transformer
+object-level
+single-view
+GCG
+sentence embedding
+VLN
+LTL
+MAPF
+CATE
+llm understanding
+llm process
+pre-existing
+llm zero-shot
+agent training
+performance multimodal
+all agent
+autoregressive transformer
+benchmark large
+more attention
+web-based
+llm itself
+sequence token
+popular benchmark
+computer-aided
+seq2seq
+fixed-point
+whole-body
+AIGC
+GMM
+UCB
+vector quantization
+retrieval-based
+FPS
+sharpness-aware
+low-power
+gold-standard
+search-based
+gpt-4-turbo
+higher-level
+well-designed
+improve safety
+benchmark model
+llm advanced
+llm gained
+llm due
+propose multimodal
+such agent
+mixture-of-expert moe
+several llm
+significant attention recent
+use-case
+llm highlighting
+attention model
+classification benchmark
+llm need
+multiple benchmark dataset
+suggest llm
+transformer which
+llm produce
+benchmark across
+llm natural language
+llm leveraging
+human preference alignment
+diffusion processe
+llm yet
+benchmark future
+generation diffusion
+attention given
+benchmark problem
+retrieve relevant
+used benchmark
+within-subject
+user-provided
+PET
+finite-time
+2/3
+GNSS
+KITTI
+WER
+decoder-only llm
+language model alignment
+np-complete
+llm-assisted
+reasoning model
+contact-rich
+user-specific
+visual token
+precision recall f1
+recall f1 score
+resnet-50
+1.4
+llama3
+l2
+self-play
+step-size
+deductive reasoning
+pixel-wise
+KBQA
+SMT
+HAR
+answering benchmark
+question answering benchmark
+ml-based
+agent performance
+token generation
+knowledge retrieval
+moe architecture
+llm learn
+reduce hallucination
+intermediate reasoning steps
+closed-set
+mixed-method
+2.3
+like gpt-4o
+llama-3
+2.6
+POS
+LASSO
+vision-and-language
+sub-gaussian
+GAI
+QML
+retrieval process
+which agent
+agent trained
+trial-and-error
+high-confidence
+expert-level
+gemini pro
+finetuning large language
+intra-class
+data llm
+llm answer
+safety issue
+aligning language
+image-level
+agent must
+resource-limited
+math reasoning
+STS
+JAX
+reward-based
+resnet-18
+OPT
+IBM
+UMAP
+SDS
+ROS
+zero-sum
+value-based
+cross-layer
+safety mechanism
+decision-making agent
+document retrieval
+safety risks
+self-supervised pretraining
+advanced reasoning
+aligning human
+agent action
+improve alignment
+llm leaderboard
+quantizing
+state-of-the-art benchmark
+state-of-the
+experiment llm
+research llm
+learning rl agent
+effectiveness llm
+llm thereby
+reasoning code
+allow llm
+llm predict
+llm reveal
+llm applied
+representation transformer
+synthetic benchmark
+reasoning these
+different benchmark
+context llm
+distilling knowledge
+llm despite
+llm make
+llm recent
+llm led
+llm exhibited
+adapting llm
+three llm
+llm backbone
+diverse benchmark
+llm fine-tuned
+find llm
+llm particularly
+serve benchmark
+non-zero
+propose llm-based
+generation benchmark
+llm existing
+diffusion model shown
+llm generated
+llm shown promise
+llm two
+self-improving
+ever-evolving
+other llm
+align closely
+pseudo-labeling
+six benchmark
+llm finally
+llm face
+llm made
+open-loop
+well-understood
+transformer decoder
+reasoning problem
+benchmark specifically designed
+agent reinforcement
+llm shown impressive
+llm possess
+propose diffusion
+llm automatically
+llm dataset
+across multiple benchmark
+3d data
+LVLM
+SNE
+discrete diffusion
+TREC
+linear attention
+3d shape
+query-based
+token embedding
+web-scale
+target llm
+rnn-based
+non-negative
+DTW
+3b
+3.2
+gpt-4 turbo
+3d representation
+1.1
+III
+2d diffusion
+alignment problem
+image retrieval
+single-modal
+multi-faceted
+human llm
+p-value
+language-image
+alignment model
+llm data
+clip embedding
+server-side
+patient-specific
+MMD
+OSS
+APR
+1b
+4.2
+1.9
+2.8
+a100 gpu
+10x
+5x
+2x
+1.3
+0.75
+three-dimensional 3d
+NDCG
+ITS
+single-task
+trillion token
+infinite-horizon
+embedding technique
+llm real-world
+safety measure
+non-linearity
+both llm
+node-level
+sequence-based
+position embedding
+pretrained llm
+attention block
+ensure safety
+pretrained transformer
+aligning language model
+biase llm
+benchmarking llm
+mathematical reasoning capabilitie
+mitigating hallucination
+reverse diffusion
+llm solve
+semi-synthetic
+drl agent
+AST
+CNN-LSTM
+llm serving
+3d mesh
+3d asset
+high-quality 3d
+6g network
+MAS
+MIA
+RWKV
+CER
+graph diffusion
+multimodal recommendation
+PSNR
+UCI
+KGE
+attention computation
+symbolic reasoning
+value alignment
+fusion transformer
+distillation sampling
+reasoning address
+benchmark reveal
+ever-growing
+open-access
+retrieved information
+llm argue
+effectively align
+pretrained large language
+larger-scale
+these token
+across variou benchmark
+llm well
+agent work
+llm capable
+agent perform
+out-of-the-box
+state-of-art
+token during
+benchmark demonstrating
+commercial llm
+language model reasoning
+llm achieved remarkable
+advancement multimodal large
+benchmark assessing
+arithmetic reasoning
+llm capability
+llm especially
+llm empirical
+like bert
+benchmark designed assess
+llm proficiency
+best-known
+llm generative
+llm one
+efficacy llm
+benchmark provide
+benchmark consisting
+applying llm
+agent reinforcement learning
+re-weighting
+agent propose
+if llm
+instruct llm
+llm create
+improving llm
+back-propagation
+attention however
+research attention
+llm complex
+agent designed
+SMILES
+AWS
+DFT
+MCQA
+entity alignment
+DINO
+KNN
+aligned model
+attention pattern
+llm judge
+3d human
+CFG
+SRS
+llm mllms
+temporal reasoning
+hallucination detection
+benchmark suite
+during pretraining
+process llm
+llm decision
+general llm
+semantic embedding
+diffusion generative model
+video diffusion model
+cooperative multi-agent
+transformer learn
+llm embedding
+temporal attention
+multi-agent deep
+score distillation sampling
+IEMOCAP
+ARC
+retrieved document
+multi-agent path
+multi-agent path finding
+INR
+DETR
+ASP
+gpt 3.5
+llama 3.1
+llm gpt-4
+outperform gpt-4
+3d space
+CTC
+SDF
+llm pre-trained
+multimodal content
+llm development
+multi-head self-attention
+llm how
+how agent
+variou reasoning
+reasoning abilitie llm
+agent policy
+set benchmark
+help llm
+augment llm
+output llm
+transformer attention
+understanding benchmark
+larger llm
+reasoning skill
+safety requirement
+cross-attention mechanism
+COMET
+GRU
+RKHS
+embedding dimension
+llm-based recommendation
+safety-critical scenario
+CBF
+DAG
+web agent
+3d environment
+IFT
+ISAC
+safety violation
+standard transformer
+evaluation benchmark dataset
+space llm
+diffusion model trained
+quantization ptq
+post-training quantization ptq
+llm powerful
+reasoning propose
+leveraging multimodal
+result benchmark
+recent llm
+llm particular
+agent recent
+llm smaller
+advancement llm
+network transformer
+gained increasing attention
+agent generate
+improve llm performance
+mechanism llm
+llm during
+agent model
+llm notably
+existing multimodal
+llm significantly advanced
+insight llm
+establishe benchmark
+llm external
+agent adapt
+llm user
+agent such
+range llm
+issue llm
+llm directly
+llm there
+llm most
+benchmark additionally
+safety reliability
+align large
+align large language
+specialized agent
+ability reason
+benchmark assess
+alignment strategy
+llm do
+llm do not
+llm typically
+transformer large
+benchmark large language
+llm furthermore
+llm cannot
+llm increasingly used
+introduce diffusion
+generation diffusion model
+llm not only
+public safety
+attracted increasing attention
+diffusion model-based
+llm abilitie
+retrieval which
+llm prompting
+align model
+pretrained diffusion
+patient safety
+llm result
+widely used benchmark
+SDXL
+SWE
+MCQ
+MADRL
+MIT
+URL
+MAPE
+DMD
+FDA
+2d diffusion model
+abstract reasoning
+llm graph
+llm-based multi-agent
+multi-hop reasoning
+safety llm
+image diffusion
+SMC
+knowledge graph reasoning
+unicode x2013
+3d printing
+MAP
+EMG
+BART
+gemini 1.5
+alpacaeval 2.0
+gsm8k math
+such gpt-4o
+OPE
+multimodal emotion
+long-context llm
+efficient transformer
+llm chatbot
+layer llm
+reasoning knowledge
+learning reasoning
+llm general
+attack llm
+generative llm
+transformer trained
+finetuned model
+training diffusion
+transformer neural
+GPT3
+PID
+CMOS
+MLM
+EDA
+SCA
+3d feature
+d4rl benchmark
+text-to-image t2i model
+chatgpt gpt-4
+splatting 3dgs
+gaussian splatting 3dgs
+enhancing reasoning
+pretraining model
+glue benchmark
+agent learning
+llm challenging
+well llm
+role llm
+logic reasoning
+llm enabling
+enhance llm performance
+llm medical
+attention transformer
+agent human
+graph benchmark
+benchmark multimodal
+cross-modal alignment
+existing llm-based
+potential llm-based
+llm multimodal
+llm internal
+deploying llm
+multimodal understanding
+llm specific
+spatial attention
+latent embedding
+multimodal input
+agent powered
+diverse reasoning
+improve reasoning
+token sequence
+large-scale benchmark
+pretrained weight
+multimodal feature
+RAN
+safety assurance
+conversational llm
+GAT
+MAML
+NISQ
+POMDP
+RRT
+ai alignment
+llm pre-training
+number token
+llm code generation
+domain-specific llm
+6d pose
+single agent
+training agent
+llm shown remarkable
+open llm leaderboard
+llm designed
+benchmark compared
+little attention
+enhance alignment
+llm even
+language model multimodal
+benchmark several
+llm handle
+align human preference
+nature llm
+benchmark comprising
+experiment three benchmark
+benchmark these
+such bert
+llm align
+safety guardrail
+allow agent
+such transformer
+like llama
+do llm
+embedding llm
+setting benchmark
+agent also
+reasoning abilitie large
+given llm
+llm but also
+enabling llm
+tuning llm
+most llm
+llm were
+llm inherently
+llm identify
+construct benchmark
+benchmark data
+such llama
+llm finding
+closely aligned
+across variou llm
+llm leading
+llm scratch
+benchmark demonstrate effectiveness
+benchmark e.g
+llm expected
+comprehension reasoning
+development multimodal
+hallucination llm
+llm enhancing
+benchmark experiment
+llm design
+llm where
+question llm
+llm given
+llm integrated
+utilize llm
+embedding then
+improving reasoning
+retrieving relevant
+like transformer
+domain alignment
+distill knowledge
+lot attention
+transformer graph
+performance transformer
+agent specifically
+benchmark furthermore
+alignment propose
+llm offer promising
+llm continue
+llm like chatgpt
+llm fail
+propose multi-agent
+all llm
+available benchmark
+publicly available benchmark
+question-answering benchmark
+agent but
+contemporary llm
+improving retrieval
+base llm
+compared benchmark
+rnns transformer
+transformer-based llm
+retrieval accuracy
+experiment multiple benchmark
+multimodal benchmark
+benchmark primarily
+llm focus
+introduce multimodal
+five benchmark
+retrieval mechanism
+enhance agent
+when agent
+llm prone
+diffusion model ldms
+llm better
+distillation sampling sds
+SPO
+GAD
+VFL
+PCG
+3d scene reconstruction
+ROME
+MEC
+SDP
+DDPG
+MPM
+AIS
+quantization-aware training
+alignment objective
+pretraining dataset
+text retrieval
+llm time
+llm time serie
+interactive agent
+image diffusion model
+control agent
+score-based diffusion
+alignment data
+USD
+CWE
+ECMWF
+multimodal reasoning
+CPT
+BPE
+MILP
+SLT
+ADS
+MSA
+t5 model
+llama 7b
+gpt-4 model
+IDE
+RDF
+APE
+CDM
+PTM
+ICD
+CFD
+WSI
+guided diffusion
+quantization scheme
+embedding language
+agent observe
+multimodal representation
+llm-generated code
+llm usage
+semantic reasoning
+rag pipeline
+llm adaptation
+consistency distillation
+token representation
+multi-agent deep reinforcement
+diffusion policie
+multimodal emotion recognition
+APT
+LGBTQ
+EMA
+LQR
+XML
+MEG
+text embedding model
+llm service
+memory retrieval
+LHC
+SCM
+TKG
+EER
+XOR
+RGBD
+3d scene graph
+passage retrieval
+quantized model
+llm-based metric
+learning multimodal
+understand reason
+image token
+llm technologie
+alignment preference
+retrieval-augmented large
+retrieval-augmented large language
+individual agent
+retrieval generation
+parameter llm
+retrieval module
+llm error
+safety performance
+llm-based approache
+llm hallucination
+human reasoning
+feature distillation
+mainstream llm
+llm mathematical
+utilization llm
+make llm
+multimodal contrastive
+diffusion-based model
+trustworthiness llm
+complexity attention
+safety alignment large
+qa benchmark
+alignment score
+vision transformer architecture
+training diffusion model
+forecasting benchmark
+t2i generation
+mnist cifar-10
+accuracy f1
+such gpt-3.5
+e.g gpt-4
+including gpt-4
+accuracy f1-score
+during covid-19
+SOAP
+LLC
+GEMM
+SPARQL
+MTS
+relational reasoning
+table reasoning
+MDI
+MCR
+MIS
+TDA
+CXR
+RPA
+DOM
+llm tool
+multimodal alignment
+speaker embedding
+linear transformer
+diffusion sampling
+PSO
+JPEG
+USA
+MDD
+token level
+received significant attention
+standardized benchmark
+seven benchmark
+performance benchmark dataset
+transformer backbone
+safety evaluation
+propose llm
+agent may
+create benchmark
+experimental result benchmark
+llm accuracy
+training token
+large pretrained
+state-of-the-art transformer
+encoder representation transformer
+reasoning decision-making
+llm employed
+llm survey
+benchmark validate
+benchmark better
+benchmark named
+such hallucination
+language llm
+llm learning
+llm explore
+benchmark llm
+feature embedding
+agent complex
+llm primarily
+reasoning remain
+underlying llm
+llm finetuning
+distillation large
+distillation large language
+llm other
+wide range llm
+llm domain
+llm offering
+token while
+such stable diffusion
+diffusion model address
+advance multimodal
+llm support
+llm limited
+llm tackle
+alignment human preference
+llm require
+llm long
+propose retrieval-augmented
+benchmark existing
+detection benchmark
+reasoning demonstrate
+llm knowledge graph
+llm garnered
+reducing hallucination
+llm could
+llm code available
+embedding these
+one llm
+complex multimodal
+benchmark introduce
+performance standard benchmark
+integrate llm
+used llm
+llm becoming
+agent including
+token probabilitie
+outperform benchmark
+benefit llm
+agent make
+allowing agent
+architecture transformer
+era llm
+because llm
+suffer hallucination
+object hallucination
+range benchmark
+step-by-step reasoning
+agent while
+while transformer
+transformer transformer
+attention mechanism transformer
+effective retrieval
+llm proposed
+powered llm
+llm-generated text
+empower llm
+llm should
+llm rapidly
+llm critical
+attracted considerable attention
+llm-based evaluation
+llm multiple
+adapt llm
+llm serve
+llm ensuring
+field multi-agent
+alignment across
+llm terms
+multimodal training
+agent achieve
+align human value
+diffusion model demonstrated
+safety critical
