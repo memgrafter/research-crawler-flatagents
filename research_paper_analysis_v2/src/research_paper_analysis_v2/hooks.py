@@ -63,6 +63,21 @@ _TRANSIENT_PATTERNS = (
 _RATE_LIMIT_GATES: Dict[str, asyncio.Event] = {}
 _RATE_LIMIT_COOLDOWN = int(os.environ.get("RPA_V2_429_COOLDOWN_SECS", "1"))
 
+# Dynamic analyzing->wrap watermark mode for pony.
+# Default watermark is 300; temporarily drop to 100 for 60s when we see
+# the known high-demand pony message. Rolling window: each hit extends it.
+_PONY_100_MODE_UNTIL_TS = 0.0
+_ANALYZING_WRAP_WATERMARK_DEFAULT = 300
+_ANALYZING_WRAP_WATERMARK_LOW = 100
+_PONY_100_MODE_SECS = 60
+
+
+def get_analyzing_wrap_watermark() -> int:
+    """Return dynamic analyzing->wrap watermark (300 normally, 100 in pony 100-mode window)."""
+    if time.time() < _PONY_100_MODE_UNTIL_TS:
+        return _ANALYZING_WRAP_WATERMARK_LOW
+    return _ANALYZING_WRAP_WATERMARK_DEFAULT
+
 
 def get_rate_limit_gate(model: str) -> asyncio.Event:
     """Lazy-init a per-model 429 gate (must be called from event loop)."""
@@ -578,6 +593,8 @@ class V2Hooks(LoggingHooks):
         )
         error_str = str(error)
 
+        global _PONY_100_MODE_UNTIL_TS
+
         if execution_id:
             # Transient HTTP errors → reset to phase for re-pickup
             if _is_transient(error_str):
@@ -590,6 +607,20 @@ class V2Hooks(LoggingHooks):
                         loop = asyncio.get_event_loop()
                         loop.call_later(_RATE_LIMIT_COOLDOWN, gate.set)
                         logger.warning("429 on %s — gate closed for %ds", model, _RATE_LIMIT_COOLDOWN)
+
+                    # Message-based pony mode (rolling 60s):
+                    # when OpenRouter says pony is high-demand and capped at 100 RPM,
+                    # lower analyzing->wrap watermark to 100 for the next minute.
+                    if (
+                        "High demand for openrouter/pony-alpha" in error_str
+                        and "limited to 100 requests per minute" in error_str
+                    ):
+                        _PONY_100_MODE_UNTIL_TS = time.time() + _PONY_100_MODE_SECS
+                        logger.warning(
+                            "Pony high-demand mode active for %ds (analyzing-wrap watermark=%d)",
+                            _PONY_100_MODE_SECS,
+                            _ANALYZING_WRAP_WATERMARK_LOW,
+                        )
 
                 # Determine reset status from what data we have
                 async with _get_v2_write_lock():
