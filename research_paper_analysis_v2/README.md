@@ -58,8 +58,8 @@ By isolating expensive calls into their own phase, the runner can:
 cd research_paper_analysis_v2
 uv sync
 
-# Seed papers from the arxiv crawler DB, then run
-python run.py --workers 3 --daemon
+# Optional: seed papers from the arxiv crawler DB, then run
+python run.py --workers 3 --daemon --seed
 ```
 
 Or use the shell wrapper (auto-rebuilds venv):
@@ -71,8 +71,11 @@ Or use the shell wrapper (auto-rebuilds venv):
 ## Usage
 
 ```bash
-# Full daemon: seed, prep, expensive, wrap until done or budget exhausted
+# Full daemon: prep, expensive, wrap until done or budget exhausted
 python run.py --workers 5 --daemon
+
+# Full daemon + startup/periodic seeding
+python run.py --workers 5 --daemon --seed
 
 # Prep only: fill buffer with cheap key_outcome calls
 python run.py --workers 10 --prep-only --daemon
@@ -96,9 +99,10 @@ python run.py --workers 5 --budget 500 --poll-interval 15 --daemon
 | `-d`, `--daemon` | off | Poll loop until done or budget exhausted |
 | `-p`, `--poll-interval` | 10.0 | Seconds between daemon passes |
 | `--prep-only` | off | Only run prep phase (fill buffer) |
+| `--seed` | off | Enable startup + periodic seeding from arxiv DB |
 | `--seed-only` | off | Only seed from arxiv DB, no execution |
 | `--min-buffer` | 20 | Min prepped papers before prioritizing analysis |
-| `--seed-limit` | 500 | Max papers to seed per pass |
+| `--seed-limit` | 500 | Max papers to seed per pass (`--seed`, `--seed-only`) |
 
 ## Project structure
 

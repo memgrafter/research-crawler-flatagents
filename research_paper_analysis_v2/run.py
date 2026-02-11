@@ -855,6 +855,7 @@ async def run_continuous(
     seed_limit: int = 500,
     stale_interval: float = 120.0,
     single_pass: bool = False,
+    seed_enabled: bool = False,
 ) -> Dict[str, int]:
     """Continuous priority scheduler.  Replaces run_once + run_daemon.
 
@@ -867,9 +868,10 @@ async def run_continuous(
         prep_only:      Only run prep phase.
         poll_interval:  Seconds to sleep when no work is available.
         seed_limit:     Max papers to seed per housekeeping sweep.
-        stale_interval: Seconds between stale-release / seed sweeps.
+        stale_interval: Seconds between stale-release sweeps.
         single_pass:    If True, stop as soon as no new work can be launched
                         and all active tasks finish (replaces old run_once).
+        seed_enabled:   If True, run startup + periodic seeding from arxiv DB.
     """
     # Size the default thread pool to match worker count.  litellm.acompletion()
     # uses loop.run_in_executor(None, ...) for sync setup before each LLM call;
@@ -933,12 +935,13 @@ async def run_continuous(
     while True:
         loop_time = asyncio.get_event_loop().time()
 
-        # Periodic housekeeping: release stale claims, re-seed, log status
+        # Periodic housekeeping: release stale claims, optional re-seed, log status
         if loop_time - last_stale_check > stale_interval:
             release_stale(conn, "prepping", "pending", max_age_minutes=60)
             release_stale(conn, "analyzing", "prepped", max_age_minutes=120)
             release_stale(conn, "wrapping", "analyzed", max_age_minutes=60)
-            seed(limit=seed_limit)
+            if seed_enabled:
+                seed(limit=seed_limit)
 
             status_counts = {}
             for row in conn.execute(
@@ -1084,10 +1087,11 @@ async def main() -> None:
     parser.add_argument("-d", "--daemon", action="store_true", help="Run continuously until all work done / budget hit")
     parser.add_argument("-p", "--poll-interval", type=float, default=5.0, help="Seconds to sleep when no work available")
     parser.add_argument("--prep-only", action="store_true", help="Only run prep phase")
+    parser.add_argument("--seed", action="store_true", help="Enable startup + periodic seeding from arxiv DB")
     parser.add_argument("--seed-only", action="store_true", help="Only seed from arxiv DB")
     parser.add_argument("--migrate-checkpoints-only", action="store_true", help="Only migrate file checkpoints into DB tables")
     parser.add_argument("--force-checkpoint-migration", action="store_true", help="Force checkpoint migration even if DB already has latest rows")
-    parser.add_argument("--seed-limit", type=int, default=500, help="Max papers to seed per pass")
+    parser.add_argument("--seed-limit", type=int, default=500, help="Max papers to seed per pass (used with --seed or --seed-only)")
     parser.add_argument("--max-prep", type=int, default=0, help="Max concurrent prep tasks (0=uncapped, env: RPA_V2_MAX_PREP)")
     parser.add_argument("--max-expensive", type=int, default=0, help="Max concurrent expensive tasks (0=uncapped, env: RPA_V2_MAX_EXPENSIVE)")
     parser.add_argument("--max-wrap", type=int, default=0, help="Max concurrent wrap tasks (0=uncapped, env: RPA_V2_MAX_WRAP)")
@@ -1149,8 +1153,9 @@ async def main() -> None:
         print(f"Seeded {count} executions")
         return
 
-    # Always seed first
-    seed(limit=args.seed_limit)
+    if args.seed:
+        count = seed(limit=args.seed_limit)
+        logger.info("Startup seeding enabled; seeded %d executions", count)
 
     stats = await run_continuous(
         max_workers=args.workers,
@@ -1159,6 +1164,7 @@ async def main() -> None:
         poll_interval=args.poll_interval,
         seed_limit=args.seed_limit,
         single_pass=not args.daemon,
+        seed_enabled=args.seed,
     )
     print(f"Prep: {stats['prep']}  Expensive: {stats['expensive']}  Wrap: {stats['wrap']}  "
           f"Resumed: {stats['resumed']}  Errors: {stats['errors']}")
