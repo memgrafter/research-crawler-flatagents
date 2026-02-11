@@ -68,6 +68,17 @@ FINAL_STATES = {"done", "failed", "no_work_final", "failed_incomplete"}
 _MAX_PREP = int(os.environ.get("RPA_V2_MAX_PREP", "0"))
 _MAX_EXPENSIVE = int(os.environ.get("RPA_V2_MAX_EXPENSIVE", "0"))
 _MAX_WRAP = int(os.environ.get("RPA_V2_MAX_WRAP", "0"))
+# If prepped buffer falls below this watermark, prioritize prep over wrap
+# so arcee capacity goes to key_outcome_writer first.
+_PREPPED_LOW_WATERMARK = int(os.environ.get("RPA_V2_PREPPED_LOW_WATERMARK", "25"))
+
+# Shutdown/drain behavior
+# First Ctrl+C drains in-flight tasks (no new launches). 0 = wait indefinitely.
+_SHUTDOWN_DRAIN_TIMEOUT_SECS = float(os.environ.get("RPA_V2_SHUTDOWN_DRAIN_TIMEOUT_SECS", "0"))
+# Progress log cadence while draining.
+_SHUTDOWN_PROGRESS_INTERVAL_SECS = float(os.environ.get("RPA_V2_SHUTDOWN_PROGRESS_INTERVAL_SECS", "5"))
+# Second Ctrl+C/SIGTERM debounce before force-exit.
+_SECOND_SIGNAL_DEBOUNCE_SECS = float(os.environ.get("RPA_V2_SECOND_SIGNAL_DEBOUNCE_SECS", "3"))
 
 # Machine config paths
 PREP_CONFIG = str(CONFIG_DIR / "prep_machine.yml")
@@ -734,22 +745,53 @@ def _pick_next(
     IDs until the task actually updates the checkpoint.
 
     Priority:
-      1. Resume incomplete machines (expensive > wrap > prep)
+      1. Resume incomplete machines (expensive first; prep/wrap order is dynamic)
       2. New expensive (highest-value model usage)
-      3. New wrap (clears pipeline, cheap)
-      4. New prep (builds buffer, cheap)
+      3. New prep vs wrap based on prepped-buffer watermark
     """
     # Per-model 429 gate — if any model is rate-limited, skip LLM phases
-    from research_paper_analysis_v2.hooks import any_rate_limit_gate_closed
+    from research_paper_analysis_v2.hooks import any_rate_limit_gate_closed, get_analyzing_wrap_watermark
     llm_gated = any_rate_limit_gate_closed()
 
+    # Keep a minimum prepped buffer so prep can feed expensive (pony-alpha).
+    prefer_prep_over_wrap = False
+    if not prep_only and _PREPPED_LOW_WATERMARK > 0:
+        prepped_count = conn.execute(
+            "SELECT COUNT(*) FROM executions WHERE status = 'prepped'"
+        ).fetchone()[0]
+        prefer_prep_over_wrap = prepped_count < _PREPPED_LOW_WATERMARK
+
+    # Dynamic escape hatch:
+    # analyzing watermark is normally 300, temporarily 100 for 60s after
+    # the known pony high-demand message appears.
+    analyzing_wrap_watermark = get_analyzing_wrap_watermark()
+    if not prep_only and analyzing_wrap_watermark > 0:
+        analyzing_count = conn.execute(
+            "SELECT COUNT(*) FROM executions WHERE status = 'analyzing'"
+        ).fetchone()[0]
+        if analyzing_count >= analyzing_wrap_watermark:
+            prefer_prep_over_wrap = False
+
     # 1. Resume incomplete
-    for machine_name, config_file, sem in [
+    resume_order = [
         ("expensive-pipeline", EXPENSIVE_CONFIG, expensive_sem),
-        ("wrap-pipeline", WRAP_CONFIG, wrap_sem),
-        ("prep-pipeline", PREP_CONFIG, prep_sem),
-    ]:
+    ]
+    if prefer_prep_over_wrap:
+        resume_order.extend([
+            ("prep-pipeline", PREP_CONFIG, prep_sem),
+            ("wrap-pipeline", WRAP_CONFIG, wrap_sem),
+        ])
+    else:
+        resume_order.extend([
+            ("wrap-pipeline", WRAP_CONFIG, wrap_sem),
+            ("prep-pipeline", PREP_CONFIG, prep_sem),
+        ])
+
+    for machine_name, config_file, sem in resume_order:
         if prep_only and machine_name != "prep-pipeline":
+            continue
+        # Strict gate: while prepped buffer is low, do not spend arcee on wrap.
+        if prefer_prep_over_wrap and machine_name == "wrap-pipeline":
             continue
         # Skip LLM-phase resumes while rate-limited
         if llm_gated and machine_name != "prep-pipeline":
@@ -767,14 +809,22 @@ def _pick_next(
                 resuming.add(claimed[0]["execution_id"])
                 return (run_expensive(claimed[0]), expensive_sem, "expensive")
 
-        # 3. New wrap
-        if wrap_sem is None or wrap_sem._value > 0:
-            claimed = claim_for_wrap(conn, 1)
+        # 3. New prep when prepped buffer is low (before wrap)
+        if prefer_prep_over_wrap and (prep_sem is None or prep_sem._value > 0):
+            claimed = claim_for_prep(conn, 1)
             if claimed:
                 resuming.add(claimed[0]["execution_id"])
-                return (run_wrap(claimed[0]), wrap_sem, "wrap")
+                return (run_prep(claimed[0]), prep_sem, "prep")
 
-    # 4. New prep
+        # 4. New wrap (strictly blocked while prepped buffer is low)
+        if not prefer_prep_over_wrap:
+            if wrap_sem is None or wrap_sem._value > 0:
+                claimed = claim_for_wrap(conn, 1)
+                if claimed:
+                    resuming.add(claimed[0]["execution_id"])
+                    return (run_wrap(claimed[0]), wrap_sem, "wrap")
+
+    # 5. New prep (always allowed; also used when llm_gated)
     if prep_sem is None or prep_sem._value > 0:
         claimed = claim_for_prep(conn, 1)
         if claimed:
@@ -950,19 +1000,55 @@ async def run_continuous(
     # Drain remaining active tasks
     if active:
         if shutdown_event.is_set():
-            logger.info("Cancelling %d active tasks...", len(active))
-            for t in active:
-                t.cancel()
-            # Force-exit on second signal during drain
-            loop.add_signal_handler(signal.SIGINT, lambda: os._exit(130))
-            loop.add_signal_handler(signal.SIGTERM, lambda: os._exit(143))
-            try:
-                await asyncio.wait_for(
-                    asyncio.gather(*active, return_exceptions=True),
-                    timeout=10.0,
+            logger.info(
+                "Shutdown drain started for %d active tasks (timeout=%ss, progress_every=%ss)",
+                len(active),
+                "infinite" if _SHUTDOWN_DRAIN_TIMEOUT_SECS <= 0 else f"{_SHUTDOWN_DRAIN_TIMEOUT_SECS:.0f}",
+                max(_SHUTDOWN_PROGRESS_INTERVAL_SECS, 1.0),
+            )
+
+            # Second signal handler: debounce for 3s, then force-exit.
+            force_exit_scheduled = False
+
+            def _schedule_force_exit(code: int) -> None:
+                nonlocal force_exit_scheduled
+                if force_exit_scheduled:
+                    return
+                force_exit_scheduled = True
+                logger.warning(
+                    "Second shutdown signal received. Force-exit in %.0fs...",
+                    _SECOND_SIGNAL_DEBOUNCE_SECS,
                 )
-            except asyncio.TimeoutError:
-                logger.warning("Drain timed out after 10s with %d tasks still active. Exiting.", len(active))
+                loop.call_later(_SECOND_SIGNAL_DEBOUNCE_SECS, lambda: os._exit(code))
+
+            loop.add_signal_handler(signal.SIGINT, lambda: _schedule_force_exit(130))
+            loop.add_signal_handler(signal.SIGTERM, lambda: _schedule_force_exit(143))
+
+            deadline = None
+            if _SHUTDOWN_DRAIN_TIMEOUT_SECS > 0:
+                deadline = loop.time() + _SHUTDOWN_DRAIN_TIMEOUT_SECS
+
+            # Drain without cancelling tasks on first signal.
+            while active:
+                remaining = len(active)
+                logger.info("Shutdown drain: %d active tasks remaining...", remaining)
+
+                wait_timeout = max(_SHUTDOWN_PROGRESS_INTERVAL_SECS, 1.0)
+                if deadline is not None:
+                    left = deadline - loop.time()
+                    if left <= 0:
+                        logger.warning(
+                            "Drain timed out after %.0fs with %d tasks still active. Cancelling remaining.",
+                            _SHUTDOWN_DRAIN_TIMEOUT_SECS,
+                            len(active),
+                        )
+                        for t in list(active):
+                            t.cancel()
+                        await asyncio.gather(*active, return_exceptions=True)
+                        break
+                    wait_timeout = min(wait_timeout, left)
+
+                await asyncio.wait(active, timeout=wait_timeout, return_when=asyncio.FIRST_COMPLETED)
         else:
             logger.info("Draining %d active tasks...", len(active))
             await asyncio.gather(*active, return_exceptions=True)
