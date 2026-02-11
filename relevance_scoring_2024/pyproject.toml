@@ -1,0 +1,16 @@
+[project]
+name = "relevance_scoring_2024"
+version = "0.1.0"
+description = "One-off 2024 FMR scoring pipeline using 2024 term clouds"
+dependencies = ["flatmachines>=1.1.1", "sentence-transformers", "huggingface-hub>=0.34.0,<1.0", "pyyaml"]
+requires-python = ">=3.10"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[project.scripts]
+relevance-scoring-2024 = "relevance_scoring_2024.main:main"
