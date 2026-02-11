@@ -1,0 +1,26 @@
+# One-off 2024 relevance scoring configuration.
+embedding:
+  model: dunzhang/stella_en_400M_v5
+  trust_remote_code: true
+  model_kwargs:
+    attn_implementation: eager
+  config_kwargs:
+    attn_implementation: eager
+    use_memory_efficient_attention: false
+    unpad_inputs: false
+  normalize: true
+  batch_size: 64
+  query_prompt: "Instruct: Given a web search query, retrieve relevant passages that answer the query.\nQuery: "
+
+# Inline anchors can be kept minimal; files are primary source for this one-off.
+anchors:
+  - large language model
+  - language model
+  - transformer
+  - retrieval augmented generation
+  - agent
+  - reasoning
+
+# Use all generated 2024 clouds together.
+anchor_files:
+  - research_paper_analysis_v2/queries/word_clouds_2024/*.txt
