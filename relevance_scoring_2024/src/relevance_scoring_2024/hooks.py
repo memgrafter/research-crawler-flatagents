@@ -89,6 +89,22 @@ class ScoringHooks(MachineHooks):
             anchors.extend(self._load_anchors_from_files(anchor_files, config_path.parent))
 
         anchors = self._dedupe_keep_order(anchors)
+
+        # Optional LLM-pass exclusions to reduce cross-domain bleed.
+        exclude_terms: List[str] = [
+            str(x).strip() for x in (config.get("anchor_exclude_terms") or []) if str(x).strip()
+        ]
+        exclude_files = config.get("anchor_exclude_files") or []
+        if exclude_files:
+            exclude_terms.extend(self._load_anchors_from_files(exclude_files, config_path.parent))
+
+        exclude_set = {t.lower() for t in self._dedupe_keep_order(exclude_terms)}
+        if exclude_set:
+            before = len(anchors)
+            anchors = [a for a in anchors if a.lower() not in exclude_set]
+            removed = before - len(anchors)
+            self.logger.info("Applied anchor exclusions: removed %d terms", removed)
+
         if not anchors:
             raise ValueError("No anchors found in relevance_scoring_2024.yml")
 
