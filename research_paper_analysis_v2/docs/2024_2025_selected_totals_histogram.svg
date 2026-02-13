@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="760">
+<rect width="100%" height="100%" fill="white"/>
+<text x="550" y="44" text-anchor="middle" font-size="30" font-family="Arial" fill="#111">Selected Totals Histogram (2024 vs 2025)</text>
+<text x="550" y="74" text-anchor="middle" font-size="15" font-family="Arial" fill="#444">Source: 2024_TRANCHE_TOTALS_AND_2025_COMPARISON.md</text>
+<text x="550" y="96" text-anchor="middle" font-size="13" font-family="Arial" fill="#666">2025 total is snapshot sum of 0.55–0.60, 0.50–0.55, 0.40–0.50 (>=0.60 listed separately in source doc)</text>
+<line x1="120" y1="620" x2="1020" y2="620" stroke="#222" stroke-width="2"/>
+<line x1="120" y1="120" x2="120" y2="620" stroke="#222" stroke-width="2"/>
+<line x1="120" y1="620.0" x2="1020" y2="620.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="108" y="625.0" text-anchor="end" font-size="12" font-family="Arial" fill="#444">0</text>
+<line x1="120" y1="520.0" x2="1020" y2="520.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="108" y="525.0" text-anchor="end" font-size="12" font-family="Arial" fill="#444">7,564</text>
+<line x1="120" y1="420.0" x2="1020" y2="420.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="108" y="425.0" text-anchor="end" font-size="12" font-family="Arial" fill="#444">15,128</text>
+<line x1="120" y1="320.0" x2="1020" y2="320.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="108" y="325.0" text-anchor="end" font-size="12" font-family="Arial" fill="#444">22,693</text>
+<line x1="120" y1="220.0" x2="1020" y2="220.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="108" y="225.0" text-anchor="end" font-size="12" font-family="Arial" fill="#444">30,257</text>
+<line x1="120" y1="120.0" x2="1020" y2="120.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="108" y="125.0" text-anchor="end" font-size="12" font-family="Arial" fill="#444">37,822</text>
+<rect x="246.00" y="454.87" width="198.00" height="165.13" fill="#2563eb"/>
+<text x="345.00" y="444.87" text-anchor="middle" font-size="14" font-family="Arial" fill="#111">12,491</text>
+<text x="345.00" y="650.00" text-anchor="middle" font-size="14" font-family="Arial" fill="#222">2024 selected total</text>
+<rect x="696.00" y="120.00" width="198.00" height="500.00" fill="#dc2626"/>
+<text x="795.00" y="110.00" text-anchor="middle" font-size="14" font-family="Arial" fill="#111">37,822</text>
+<text x="795.00" y="650.00" text-anchor="middle" font-size="14" font-family="Arial" fill="#222">2025 selected total
+(snapshot)</text>
+<text x="570.0" y="732" text-anchor="middle" font-size="15" font-family="Arial" fill="#222">Run snapshot</text>
+<text x="28" y="370.0" transform="rotate(-90 28 370.0)" text-anchor="middle" font-size="15" font-family="Arial" fill="#222">Selected paper count</text>
+</svg>
