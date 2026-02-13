@@ -14,7 +14,7 @@ set -euo pipefail
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 VENV_PATH="${VENV_PATH:-$SCRIPT_DIR/.venv}"
 DATA_DIR="$SCRIPT_DIR/data"
-ANALYSIS_DIR="$HOME/code/analysis/ml_research_analysis"
+ANALYSIS_DIR="$HOME/code/analysis/ml_research_analysis_2024"
 
 if [[ ! -x "$VENV_PATH/bin/python" ]]; then
   echo "Virtualenv not found at: $VENV_PATH" >&2
@@ -69,7 +69,7 @@ if [[ "\${RPA_V2_SENTINEL_DELETE_PDFS:-1}" == "1" ]]; then
   while IFS= read -r -d '' pdf; do
     txt="\${pdf%.pdf}.txt"
     if [[ -s "\$txt" ]]; then
-      rm -f "\$pdf"
+      /bin/rm -f "\$pdf"
     fi
   done < <(find "$DATA_DIR" -maxdepth 1 -type f -name '*.pdf' -print0)
 fi

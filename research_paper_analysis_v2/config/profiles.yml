@@ -11,9 +11,9 @@ data:
       temperature: 1.0
 
     prototype_reasoning:
-      # LiteLLM strips one leading provider segment for OpenRouter models.
-      # Use double prefix so OpenRouter receives model id: openrouter/pony-alpha.
-      name: openrouter/openrouter/pony-alpha
+      # Temporary override: pony-alpha has been retired/unavailable on OpenRouter.
+      # Route expensive phase to Trinity until a new reasoning model is selected.
+      name: openrouter/arcee-ai/trinity-large-preview:free
       temperature: 1.0
 
   default: prototype_structured

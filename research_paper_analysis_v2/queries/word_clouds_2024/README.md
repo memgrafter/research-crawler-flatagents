@@ -57,6 +57,16 @@ The intended production use is:
 
 In short: this vocabulary pack is meant to operate as a single 2024 term system on top of `fmr_2024` for 2024 papers.
 
+## LLM-pass exclusions (added after score scan)
+
+After scanning `data/word_list_2024_candidates.csv` score-ranked terms, we found high-scoring bleed terms that were too generic or too domain-specific for an LLM-only pass.
+
+To enforce an explicit LLM pass, we maintain a deny-list used by the 2024 scorer:
+
+- `llm_pass_exclusions_2024.list`
+
+This list removes terms such as broad labels (`AI`, `ML`, `RL`), generic quality/process phrases (`high-quality`, `decision-making`, `real-time`), and domain-heavy markers (`EEG`, `MRI`, `x-ray`, `q-learning`, `f1 score`).
+
 ## Why this method is robust
 
 1. **Multi-signal candidate selection**
@@ -113,6 +123,7 @@ If you want to minimize this flavor further:
 
 - `general_ml_llm_high_recall_95.txt` (broad catch-all cloud)
 - `shotgun_ml_llm_2024.txt` (raw ranked shortlist from the generator)
+- `llm_pass_exclusions_2024.list` (explicit deny-list used by the 2024 LLM pass)
 - themed clouds:
   - `core_architecture_components.txt`
   - `model_families_specific_implementations.txt`
