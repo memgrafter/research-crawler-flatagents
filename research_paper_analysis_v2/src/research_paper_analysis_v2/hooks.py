@@ -51,12 +51,34 @@ logger = get_logger(__name__)
 # Transient error classification
 # ---------------------------------------------------------------------------
 _TRANSIENT_PATTERNS = (
-    "ServiceUnavailableError", "503",
-    "RateLimitError", "rate_limit", "429",
+    "serviceunavailableerror", "503",
+    "ratelimiterror", "rate_limit", "429",
     "peer closed connection",
-    "timeout", "Timeout",
-    "APIError",
+    "broken pipe",
+    "connection reset by peer",
+    "cannot connect to host",
+    "server disconnected",
+    "remoteprotocolerror",
+    "readerror",
+    "connecterror",
+    "timeout",
+    "apierror",
+    "transient download failure",
 )
+
+# Some transport exceptions have empty str(exc); treat these as transient,
+# especially when they happen in download_pdf.
+_BLANK_TRANSIENT_ERROR_TYPES = {
+    "ReadError",
+    "RemoteProtocolError",
+    "ConnectError",
+    "ReadTimeout",
+    "ConnectTimeout",
+    "PoolTimeout",
+    "TimeoutException",
+    "WriteError",
+    "ProtocolError",
+}
 
 # Per-model 429 gates — each model has its own asyncio.Event, starts open (set).
 # Cleared on 429 detection for that model, re-set after cooldown / reset header.
@@ -137,7 +159,8 @@ def any_rate_limit_gate_closed() -> bool:
 
 
 def _is_transient(error: str) -> bool:
-    return any(p in error for p in _TRANSIENT_PATTERNS)
+    text = (error or "").lower()
+    return any(p in text for p in _TRANSIENT_PATTERNS)
 
 
 def _is_rate_limit(error: str) -> bool:
@@ -278,6 +301,10 @@ PREP_CORPUS_CONCURRENCY = int(os.environ.get("RPA_V2_PREP_CORPUS_CONCURRENCY", "
 HTTP_MAX_CONNECTIONS = int(os.environ.get("RPA_V2_HTTP_MAX_CONN", "128"))
 HTTP_MAX_KEEPALIVE = int(os.environ.get("RPA_V2_HTTP_KEEPALIVE", "64"))
 DOWNLOAD_USER_AGENT = os.environ.get("RPA_V2_DOWNLOAD_USER_AGENT", "")
+# Fixed retry schedule (no env tuning).
+# Example with retries: DOWNLOAD_RETRY_DELAYS_SECS = [0.75, 1.5, 3.0]
+# Empty list means no retries (single attempt only).
+DOWNLOAD_RETRY_DELAYS_SECS: List[float] = []
 
 # LLM aiohttp pool (litellm reads these at import time — set in run.sh)
 # AIOHTTP_CONNECTOR_LIMIT        — total TCP connections (default 300)
@@ -547,6 +574,8 @@ class V2Hooks(LoggingHooks):
         if not arxiv_id:
             raise ValueError("No arxiv_id in context for download_pdf")
 
+        context["last_error_stage"] = "download_pdf"
+
         self._data_dir.mkdir(parents=True, exist_ok=True)
         safe_id = arxiv_id.replace("/", "_")
         pdf_path = self._data_dir / f"{safe_id}.pdf"
@@ -558,18 +587,74 @@ class V2Hooks(LoggingHooks):
             return context
 
         pdf_url = f"https://export.arxiv.org/pdf/{arxiv_id}"
+        retry_delays = list(DOWNLOAD_RETRY_DELAYS_SECS)
+        attempts = 1 + len(retry_delays)
+        retriable_status = {408, 409, 425, 429, 500, 502, 503, 504}
+
         t0 = time.perf_counter()
         async with _get_download_sem():
             client = await _get_http_client()
-            logger.info("Downloading PDF: %s", pdf_url)
-            resp = await client.get(pdf_url)
-            resp.raise_for_status()
-            await asyncio.to_thread(pdf_path.write_bytes, resp.content)
 
-        logger.info("download_pdf done arxiv_id=%s ms=%.0f bytes=%d",
-                     arxiv_id, (time.perf_counter() - t0) * 1000, len(resp.content))
-        context["pdf_path"] = str(pdf_path)
-        return context
+            for attempt in range(1, attempts + 1):
+                err_type = "RuntimeError"
+                err_msg = ""
+                should_retry = False
+
+                try:
+                    logger.info("Downloading PDF: %s (attempt %d/%d)", pdf_url, attempt, attempts)
+                    resp = await client.get(pdf_url)
+                    resp.raise_for_status()
+                    content = resp.content
+                    await asyncio.to_thread(pdf_path.write_bytes, content)
+
+                    logger.info(
+                        "download_pdf done arxiv_id=%s ms=%.0f bytes=%d attempts=%d",
+                        arxiv_id,
+                        (time.perf_counter() - t0) * 1000,
+                        len(content),
+                        attempt,
+                    )
+                    context["pdf_path"] = str(pdf_path)
+                    return context
+
+                except asyncio.CancelledError:
+                    raise
+                except httpx.HTTPStatusError as exc:
+                    err_type = type(exc).__name__
+                    status = exc.response.status_code if exc.response is not None else None
+                    err_msg = f"{err_type} status={status} url={pdf_url}: {exc}"
+                    should_retry = (status in retriable_status) and (attempt < attempts)
+                except httpx.HTTPError as exc:
+                    err_type = type(exc).__name__
+                    detail = str(exc).strip() or repr(exc)
+                    err_msg = f"{err_type} while downloading {pdf_url}: {detail}"
+                    should_retry = attempt < attempts
+                except Exception as exc:
+                    err_type = type(exc).__name__
+                    detail = str(exc).strip() or repr(exc)
+                    err_msg = f"{err_type} while downloading {pdf_url}: {detail}"
+                    should_retry = attempt < attempts
+
+                context["last_error"] = err_msg
+                context["last_error_type"] = err_type
+
+                if should_retry:
+                    delay = retry_delays[attempt - 1]
+                    logger.warning(
+                        "download_pdf retry arxiv_id=%s attempt=%d/%d delay=%.2fs err=%s",
+                        arxiv_id,
+                        attempt,
+                        attempts,
+                        delay,
+                        err_msg[:240],
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+
+                raise RuntimeError(err_msg)
+
+        # Unreachable in normal flow.
+        raise RuntimeError(f"download_pdf exhausted unexpectedly for {arxiv_id}")
 
     async def _extract_text(self, context: Dict[str, Any]) -> Dict[str, Any]:
         arxiv_id = self._norm(context.get("arxiv_id"))
@@ -751,18 +836,33 @@ class V2Hooks(LoggingHooks):
 
     async def _mark_execution_failed(self, context: Dict[str, Any]) -> Dict[str, Any]:
         execution_id = self._norm(context.get("execution_id"))
-        error = (
-            context.get("last_error")
-            or context.get("error")
-            or "unknown error"
-        )
-        error_str = str(error)
+
+        raw_error = context.get("last_error")
+        if raw_error is None or (isinstance(raw_error, str) and not raw_error.strip()):
+            raw_error = context.get("error")
+
+        error_str = str(raw_error).strip() if raw_error is not None else ""
+        error_type = str(context.get("last_error_type") or "").strip()
+        stage_hint = str(context.get("last_error_stage") or "").strip()
+
+        force_transient = False
+        if not error_str:
+            if stage_hint == "download_pdf" or error_type in _BLANK_TRANSIENT_ERROR_TYPES:
+                force_transient = True
+                error_str = f"transient download failure ({error_type or 'blank_error'})"
+            else:
+                error_str = "unknown error"
+
+        # Ensure machine final output contains a concrete error string.
+        context["last_error"] = error_str
+        if error_type:
+            context["last_error_type"] = error_type
 
         global _PONY_100_MODE_UNTIL_TS
 
         if execution_id:
             # Transient HTTP errors → reset to phase for re-pickup
-            if _is_transient(error_str):
+            if force_transient or _is_transient(error_str):
                 # Fire per-model 429 gate if rate-limited
                 if _is_rate_limit(error_str):
                     model = _resolve_rate_limit_model(context, error_str)
@@ -795,7 +895,7 @@ class V2Hooks(LoggingHooks):
                 async with _get_v2_write_lock():
                     conn = self._v2_db()
                     row = conn.execute(
-                        "SELECT prep_output, expensive_output FROM executions WHERE execution_id = ?",
+                        "SELECT prep_output, expensive_output, priority FROM executions WHERE execution_id = ?",
                         (execution_id,),
                     ).fetchone()
                     if row and row[1]:  # has expensive_output
@@ -804,9 +904,27 @@ class V2Hooks(LoggingHooks):
                         reset_status = "prepped"
                     else:
                         reset_status = "pending"
+
+                    current_priority = row[2] if row else None
+                    target_priority = current_priority
+                    if reset_status == "pending":
+                        try:
+                            if current_priority is None or float(current_priority) > -1.0:
+                                target_priority = -1.0
+                        except (TypeError, ValueError):
+                            target_priority = -1.0
+
+                    now_iso = _utc_now_iso()
                     conn.execute(
-                        "UPDATE executions SET status = ?, error = NULL, updated_at = ? WHERE execution_id = ?",
-                        (reset_status, _utc_now_iso(), execution_id),
+                        """
+                        UPDATE executions
+                        SET status = ?,
+                            error = NULL,
+                            priority = ?,
+                            updated_at = ?
+                        WHERE execution_id = ?
+                        """,
+                        (reset_status, target_priority, now_iso, execution_id),
                     )
                     conn.commit()
                 logger.info("Transient error for %s — reset to %s: %s", execution_id, reset_status, error_str[:120])
