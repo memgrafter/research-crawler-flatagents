@@ -301,6 +301,11 @@ PREP_CORPUS_CONCURRENCY = int(os.environ.get("RPA_V2_PREP_CORPUS_CONCURRENCY", "
 HTTP_MAX_CONNECTIONS = int(os.environ.get("RPA_V2_HTTP_MAX_CONN", "128"))
 HTTP_MAX_KEEPALIVE = int(os.environ.get("RPA_V2_HTTP_KEEPALIVE", "64"))
 DOWNLOAD_USER_AGENT = os.environ.get("RPA_V2_DOWNLOAD_USER_AGENT", "")
+
+# GCS archive download (gsutil first attempt)
+GSUTIL_BIN = str(Path.home() / "virtualenvs" / "gsutil" / "bin" / "gsutil")
+GCS_PDF_PREFIX = "gs://arxiv-dataset/arxiv/pdf"
+
 # Fixed retry schedule (no env tuning).
 # Example with retries: DOWNLOAD_RETRY_DELAYS_SECS = [0.75, 1.5, 3.0]
 # Empty list means no retries (single attempt only).
@@ -393,6 +398,11 @@ async def _get_http_client() -> httpx.AsyncClient:
                 ),
             )
     return _HTTP_CLIENT
+
+
+def _gcs_pdf_uri_for_arxiv(arxiv_id: str) -> str:
+    month = arxiv_id[:4]
+    return f"{GCS_PDF_PREFIX}/{month}/{arxiv_id}v1.pdf"
 
 
 def _extract_pdf_text_sync(pdf_path_str: str, txt_path_str: str) -> Tuple[str, int]:
@@ -569,23 +579,50 @@ class V2Hooks(LoggingHooks):
     # Prep actions: download_pdf, extract_text
     # -------------------------------------------------------------------------
 
-    async def _download_pdf(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        arxiv_id = self._norm(context.get("arxiv_id"))
-        if not arxiv_id:
-            raise ValueError("No arxiv_id in context for download_pdf")
+    async def _download_pdf_from_gs(self, arxiv_id: str, pdf_path: Path) -> Dict[str, Any]:
+        gs_uri = _gcs_pdf_uri_for_arxiv(arxiv_id)
 
-        context["last_error_stage"] = "download_pdf"
+        if not Path(GSUTIL_BIN).exists():
+            raise RuntimeError(f"gsutil not found at {GSUTIL_BIN}")
 
-        self._data_dir.mkdir(parents=True, exist_ok=True)
-        safe_id = arxiv_id.replace("/", "_")
-        pdf_path = self._data_dir / f"{safe_id}.pdf"
+        t0 = time.perf_counter()
+        async with _get_download_sem():
+            logger.info("Downloading PDF via gsutil: %s", gs_uri)
+            proc = await asyncio.create_subprocess_exec(
+                GSUTIL_BIN,
+                "cp",
+                gs_uri,
+                str(pdf_path),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout_b, stderr_b = await proc.communicate()
 
-        # Fast path: skip semaphore entirely if PDF is cached
-        if pdf_path.exists():
-            logger.info("PDF already exists: %s", pdf_path)
-            context["pdf_path"] = str(pdf_path)
-            return context
+        if proc.returncode != 0:
+            try:
+                pdf_path.unlink()
+            except FileNotFoundError:
+                pass
+            detail = (stderr_b or stdout_b or b"").decode("utf-8", errors="replace").strip()
+            raise RuntimeError(f"gsutil cp failed rc={proc.returncode} uri={gs_uri}: {detail[:400]}")
 
+        if not pdf_path.exists():
+            raise RuntimeError(f"gsutil cp succeeded but file missing for {gs_uri}")
+
+        size = pdf_path.stat().st_size
+        if size <= 0:
+            raise RuntimeError(f"gsutil cp produced empty file for {gs_uri}")
+
+        logger.info(
+            "download_pdf done arxiv_id=%s ms=%.0f bytes=%d attempts=%d source=gsutil",
+            arxiv_id,
+            (time.perf_counter() - t0) * 1000,
+            size,
+            1,
+        )
+        return {"pdf_path": str(pdf_path)}
+
+    async def _download_pdf_from_export(self, context: Dict[str, Any], arxiv_id: str, pdf_path: Path) -> Dict[str, Any]:
         pdf_url = f"https://export.arxiv.org/pdf/{arxiv_id}"
         retry_delays = list(DOWNLOAD_RETRY_DELAYS_SECS)
         attempts = 1 + len(retry_delays)
@@ -655,6 +692,34 @@ class V2Hooks(LoggingHooks):
 
         # Unreachable in normal flow.
         raise RuntimeError(f"download_pdf exhausted unexpectedly for {arxiv_id}")
+
+    async def _download_pdf(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        arxiv_id = self._norm(context.get("arxiv_id"))
+        if not arxiv_id:
+            raise ValueError("No arxiv_id in context for download_pdf")
+
+        context["last_error_stage"] = "download_pdf"
+
+        self._data_dir.mkdir(parents=True, exist_ok=True)
+        safe_id = arxiv_id.replace("/", "_")
+        pdf_path = self._data_dir / f"{safe_id}.pdf"
+
+        # Fast path: skip semaphore entirely if PDF is cached
+        if pdf_path.exists():
+            logger.info("PDF already exists: %s", pdf_path)
+            context["pdf_path"] = str(pdf_path)
+            return context
+
+        try:
+            result = await self._download_pdf_from_gs(arxiv_id, pdf_path)
+            context.update(result)
+            return context
+        except asyncio.CancelledError:
+            raise
+        except Exception as gs_exc:
+            logger.warning("gsutil download failed arxiv_id=%s: %s", arxiv_id, gs_exc)
+
+        return await self._download_pdf_from_export(context, arxiv_id, pdf_path)
 
     async def _extract_text(self, context: Dict[str, Any]) -> Dict[str, Any]:
         arxiv_id = self._norm(context.get("arxiv_id"))

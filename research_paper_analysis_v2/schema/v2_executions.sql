@@ -53,9 +53,12 @@ CREATE TABLE IF NOT EXISTS machine_checkpoints (
 );
 
 CREATE INDEX IF NOT EXISTS idx_mc_execution_created ON machine_checkpoints(execution_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mc_machine_name ON machine_checkpoints(machine_name);
 
 CREATE TABLE IF NOT EXISTS machine_latest (
     execution_id TEXT PRIMARY KEY,
     latest_key   TEXT NOT NULL,
     updated_at   TEXT NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_ml_latest_key ON machine_latest(latest_key);

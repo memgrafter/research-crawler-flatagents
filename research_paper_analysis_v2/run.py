@@ -757,7 +757,8 @@ def _pick_next(
         is_cheap_model_rate_limited,
         is_expensive_model_rate_limited,
     )
-    cheap_gated = is_cheap_model_rate_limited()
+    cheap_gated = False  # temporary bypass: do not gate cheap-model phases on 429
+    #cheap_gated = is_cheap_model_rate_limited()
     expensive_gated = is_expensive_model_rate_limited()
 
     # Keep a minimum prepped buffer so prep can feed expensive (pony-alpha).
