@@ -9,7 +9,8 @@ set -euo pipefail
 #   ./run_quality_sentinel.sh --latest 25 --fail-on-warn --json-out logs/quality_sentinel_latest.json
 #
 # Daemon PDF cleanup behavior:
-#   RPA_V2_SENTINEL_DELETE_PDFS=1   # delete data/*.pdf only when matching .txt exists and is non-empty (default: enabled)
+#   RPA_V2_SENTINEL_DELETE_PDFS=1      # delete data/*.pdf only when matching .txt exists and is non-empty (default: enabled)
+#   RPA_V2_SENTINEL_INITIAL_BACKFILL=0 # on first daemon tick, skip copying historical *.md (default: 0)
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 VENV_PATH="${VENV_PATH:-$SCRIPT_DIR/.venv}"
@@ -75,15 +76,33 @@ if [[ "\${RPA_V2_SENTINEL_DELETE_PDFS:-1}" == "1" ]]; then
 fi
 
 copied_any=0
+SYNC_STAMP="$ANALYSIS_DIR/.rpa_v2_md_sync.stamp"
+INITIAL_BACKFILL="\${RPA_V2_SENTINEL_INITIAL_BACKFILL:-0}"
+
+if [[ ! -f "\$SYNC_STAMP" ]]; then
+  if [[ "\$INITIAL_BACKFILL" == "1" ]]; then
+    while IFS= read -r -d '' md; do
+      cp "\$md" "$ANALYSIS_DIR/"
+      copied_any=1
+    done < <(find "$DATA_DIR" -maxdepth 1 -type f -name '*.md' -print0)
+  fi
+  touch "\$SYNC_STAMP"
+fi
+
+NEXT_STAMP="\$(mktemp "$ANALYSIS_DIR/.rpa_v2_md_sync.XXXXXX")"
+touch "\$NEXT_STAMP"
+
 while IFS= read -r -d '' md; do
   cp "\$md" "$ANALYSIS_DIR/"
   copied_any=1
-done < <(find "$DATA_DIR" -maxdepth 1 -type f -name '*.md' -print0)
+done < <(find "$DATA_DIR" -maxdepth 1 -type f -name '*.md' -newer "\$SYNC_STAMP" -print0)
+
+mv "\$NEXT_STAMP" "\$SYNC_STAMP"
 
 if [[ "\$copied_any" -eq 1 ]]; then
   ${WATCH_CMD}
 else
-  echo "No markdown files found in $DATA_DIR"
+  echo "No new markdown files to copy from $DATA_DIR"
 fi
 
 pid=\$(pgrep -f '.venv/bin/python3 .*run.py' | head -1 || true)
@@ -108,11 +127,12 @@ EOF
   printf -v WATCH_BASH_CMD 'bash -lc %q' "$WATCH_BODY"
 
   if [[ "${RPA_V2_SENTINEL_DELETE_PDFS:-1}" == "1" ]]; then
-    echo "Starting quality sentinel daemon mode via watch (interval=${INTERVAL}s, SAFE PDF cleanup ENABLED: delete only when matching .txt exists and is non-empty, copying data/*.md to $ANALYSIS_DIR each tick)"
+    echo "Starting quality sentinel daemon mode via watch (interval=${INTERVAL}s, SAFE PDF cleanup ENABLED, incremental markdown sync to $ANALYSIS_DIR)"
   else
-    echo "Starting quality sentinel daemon mode via watch (interval=${INTERVAL}s, PDF cleanup disabled, copying data/*.md to $ANALYSIS_DIR each tick)"
+    echo "Starting quality sentinel daemon mode via watch (interval=${INTERVAL}s, PDF cleanup disabled, incremental markdown sync to $ANALYSIS_DIR)"
     echo "Set RPA_V2_SENTINEL_DELETE_PDFS=1 to re-enable PDF cleanup explicitly."
   fi
+  echo "Initial markdown backfill is ${RPA_V2_SENTINEL_INITIAL_BACKFILL:-0} (set to 1 to copy all existing markdown on first tick)."
 
   exec watch -n "$INTERVAL" "$WATCH_BASH_CMD"
 fi

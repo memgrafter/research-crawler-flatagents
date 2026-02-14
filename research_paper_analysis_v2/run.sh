@@ -34,7 +34,7 @@ fi
 # --- Phase concurrency caps ------------------------------------------------
 export RPA_V2_MAX_PREP=120
 export RPA_V2_MAX_WRAP=180
-export RPA_V2_PREP_DOWNLOAD_CONCURRENCY=50
+export RPA_V2_PREP_DOWNLOAD_CONCURRENCY=10
 export RPA_V2_DOWNLOAD_USER_AGENT="research_paper_analysis (mailto:memgrafter@gmail.com)"
 
 # --- aiohttp connection pool (litellm uses aiohttp for async HTTP) ---------
