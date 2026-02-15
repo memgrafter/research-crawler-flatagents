@@ -3,7 +3,7 @@ spec_version: "1.0.0"
 
 data:
   name: key-outcome-writer
-  model: prototype_structured
+  model: prototype_reasoning
 
   system: |
     You are a technical research analyst.

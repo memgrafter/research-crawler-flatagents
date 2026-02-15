@@ -72,6 +72,12 @@ _MAX_WRAP = int(os.environ.get("RPA_V2_MAX_WRAP", "0"))
 # so arcee capacity goes to key_outcome_writer first.
 _PREPPED_LOW_WATERMARK = int(os.environ.get("RPA_V2_PREPPED_LOW_WATERMARK", "0"))
 
+# Hard override: disable scheduler gating/priority gates and run whatever can launch.
+# 1 = disable gates (default for this temporary high-throughput run), 0 = normal behavior.
+_DISABLE_SCHEDULER_GATING = os.environ.get("RPA_V2_DISABLE_SCHEDULER_GATING", "1").strip().lower() in {
+    "1", "true", "yes", "on"
+}
+
 # Shutdown/drain behavior
 # First Ctrl+C drains in-flight tasks (no new launches). 0 = wait indefinitely.
 _SHUTDOWN_DRAIN_TIMEOUT_SECS = float(os.environ.get("RPA_V2_SHUTDOWN_DRAIN_TIMEOUT_SECS", "0"))
@@ -620,6 +626,11 @@ async def run_wrap(execution: Dict[str, Any]) -> bool:
         return False
 
     source_url = f"https://arxiv.org/abs/{arxiv_id}" if arxiv_id else ""
+    warm = _load_latest_wrap_context(get_v2_db(), execution_id)
+    restored_keys = [k for k, v in warm.items() if v not in (None, "")]
+    if restored_keys:
+        logger.info("WRAP warm-start %s: restored=%s", arxiv_id, ",".join(restored_keys))
+
     logger.info("WRAP %s: %s", arxiv_id, execution["title"][:60])
 
     try:
@@ -647,6 +658,12 @@ async def run_wrap(execution: Dict[str, Any]) -> bool:
             "why_hypotheses": expensive_output.get("why_hypotheses", ""),
             "reproduction_notes": expensive_output.get("reproduction_notes", ""),
             "open_questions": expensive_output.get("open_questions", ""),
+            # Warm-start fields from prior wrap checkpoint
+            "limits_confidence": warm.get("limits_confidence"),
+            "report_body": warm.get("report_body"),
+            "judge_decision_raw": warm.get("judge_decision_raw"),
+            "judge_decision": warm.get("judge_decision") or "REPAIR",
+            "repair_attempted": bool(warm.get("repair_attempted", False)),
         })
 
         if result.get("error"):
@@ -705,6 +722,39 @@ def _parse_json_field(raw: Any, field_name: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+def _load_latest_wrap_context(conn: sqlite3.Connection, execution_id: str) -> Dict[str, Any]:
+    """Best-effort load of latest wrap-pipeline context for warm-start reuse."""
+    row = conn.execute(
+        """
+        SELECT CAST(mc.snapshot_json AS TEXT) AS snapshot_json
+        FROM machine_latest ml
+        JOIN machine_checkpoints mc ON mc.checkpoint_key = ml.latest_key
+        WHERE ml.execution_id = ? AND mc.machine_name = 'wrap-pipeline'
+        LIMIT 1
+        """,
+        (execution_id,),
+    ).fetchone()
+    if not row or not row["snapshot_json"]:
+        return {}
+
+    try:
+        snapshot = json.loads(row["snapshot_json"])
+    except Exception:
+        return {}
+
+    context = snapshot.get("context") or {}
+    if not isinstance(context, dict):
+        return {}
+
+    return {
+        "limits_confidence": context.get("limits_confidence"),
+        "report_body": context.get("report_body"),
+        "judge_decision_raw": context.get("judge_decision_raw"),
+        "judge_decision": context.get("judge_decision"),
+        "repair_attempted": context.get("repair_attempted"),
+    }
+
+
 def _mark_failed_in_db(execution_id: str, error: str) -> None:
     """Mark an execution as failed directly (for exception paths)."""
     try:
@@ -749,21 +799,22 @@ def _pick_next(
       2. New expensive (highest-value model usage)
       3. New prep vs wrap based on prepped-buffer watermark
     """
-    # Per-model 429 gates:
-    # - prep + wrap use cheap model
-    # - expensive uses reasoning model
+    # 429 gate (single-model mode): all phases currently route to Trinity.
     from research_paper_analysis_v2.hooks import (
         get_analyzing_wrap_watermark,
         is_cheap_model_rate_limited,
-        is_expensive_model_rate_limited,
     )
-    cheap_gated = False  # temporary bypass: do not gate cheap-model phases on 429
-    #cheap_gated = is_cheap_model_rate_limited()
-    expensive_gated = is_expensive_model_rate_limited()
+    if _DISABLE_SCHEDULER_GATING:
+        cheap_gated = False
+        expensive_gated = False
+    else:
+        model_gated = is_cheap_model_rate_limited()
+        cheap_gated = model_gated
+        expensive_gated = model_gated
 
     # Keep a minimum prepped buffer so prep can feed expensive (pony-alpha).
     prefer_prep_over_wrap = False
-    if not prep_only and _PREPPED_LOW_WATERMARK > 0:
+    if (not _DISABLE_SCHEDULER_GATING) and (not prep_only) and _PREPPED_LOW_WATERMARK > 0:
         prepped_count = conn.execute(
             "SELECT COUNT(*) FROM executions WHERE status = 'prepped'"
         ).fetchone()[0]
@@ -772,13 +823,14 @@ def _pick_next(
     # Dynamic escape hatch:
     # analyzing watermark is normally 300, temporarily 100 for 60s after
     # the known pony high-demand message appears.
-    analyzing_wrap_watermark = get_analyzing_wrap_watermark()
-    if not prep_only and analyzing_wrap_watermark > 0:
-        analyzing_count = conn.execute(
-            "SELECT COUNT(*) FROM executions WHERE status = 'analyzing'"
-        ).fetchone()[0]
-        if analyzing_count >= analyzing_wrap_watermark:
-            prefer_prep_over_wrap = False
+    if not _DISABLE_SCHEDULER_GATING:
+        analyzing_wrap_watermark = get_analyzing_wrap_watermark()
+        if not prep_only and analyzing_wrap_watermark > 0:
+            analyzing_count = conn.execute(
+                "SELECT COUNT(*) FROM executions WHERE status = 'analyzing'"
+            ).fetchone()[0]
+            if analyzing_count >= analyzing_wrap_watermark:
+                prefer_prep_over_wrap = False
 
     # 1. Resume incomplete
     resume_order = [
@@ -891,6 +943,9 @@ async def run_continuous(
     prep_sem = asyncio.Semaphore(_MAX_PREP) if _MAX_PREP > 0 else None
     expensive_sem = asyncio.Semaphore(_MAX_EXPENSIVE) if _MAX_EXPENSIVE > 0 else None
     wrap_sem = asyncio.Semaphore(_MAX_WRAP) if _MAX_WRAP > 0 else None
+
+    if _DISABLE_SCHEDULER_GATING:
+        logger.warning("Scheduler gating disabled (RPA_V2_DISABLE_SCHEDULER_GATING=1): ignoring rate-limit and watermark gates")
 
     active: set[asyncio.Task] = set()
     resuming: set[str] = set()

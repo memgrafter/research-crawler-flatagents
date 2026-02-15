@@ -66,7 +66,7 @@ data:
     write_key_outcome:
       agent: key_outcome_writer
       execution:
-        type: default
+        type: retry
       input:
         title: context.title
         authors: context.authors

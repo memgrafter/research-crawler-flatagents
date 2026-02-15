@@ -85,16 +85,23 @@ _BLANK_TRANSIENT_ERROR_TYPES = {
 _RATE_LIMIT_GATES: Dict[str, asyncio.Event] = {}
 _RATE_LIMIT_UNTIL_TS: Dict[str, float] = {}
 _RATE_LIMIT_COOLDOWN = float(os.environ.get("RPA_V2_429_COOLDOWN_SECS", "1"))
+_RATE_LIMIT_MIN_COOLDOWN_SECS = float(os.environ.get("RPA_V2_429_MIN_COOLDOWN_SECS", "12"))
 _RATE_LIMIT_RESET_JITTER_SECS = float(os.environ.get("RPA_V2_429_RESET_JITTER_SECS", "0.35"))
 
-# Canonical model keys used for per-model gating.
+# Canonical model keys used for 429 gating.
+# Current pipeline is single-model (cheap+expensive profiles both route to Trinity),
+# so default to a unified gate key to avoid split-gate dead states.
 _CHEAP_MODEL_KEY = os.environ.get(
     "RPA_V2_CHEAP_MODEL_KEY",
     "openrouter/arcee-ai/trinity-large-preview:free",
 )
-_EXPENSIVE_MODEL_KEY = os.environ.get(
-    "RPA_V2_EXPENSIVE_MODEL_KEY",
-    "openrouter/openrouter/pony-alpha",
+_SINGLE_MODEL_GATE = os.environ.get("RPA_V2_SINGLE_MODEL_GATE", "1").strip().lower() in {
+    "1", "true", "yes", "on"
+}
+_EXPENSIVE_MODEL_KEY = (
+    _CHEAP_MODEL_KEY
+    if _SINGLE_MODEL_GATE
+    else os.environ.get("RPA_V2_EXPENSIVE_MODEL_KEY", "openrouter/openrouter/pony-alpha")
 )
 
 
@@ -108,9 +115,9 @@ def _normalize_model_key(model: Optional[str]) -> str:
     if "trinity-large-preview" in lowered or "prototype_structured" in lowered:
         return _CHEAP_MODEL_KEY
     if "pony-alpha" in lowered or "prototype_reasoning" in lowered:
-        return _EXPENSIVE_MODEL_KEY
+        return _CHEAP_MODEL_KEY if _SINGLE_MODEL_GATE else _EXPENSIVE_MODEL_KEY
 
-    return raw
+    return _CHEAP_MODEL_KEY if (_SINGLE_MODEL_GATE and raw == _EXPENSIVE_MODEL_KEY) else raw
 
 
 def is_model_rate_limited(model: str) -> bool:
@@ -703,6 +710,13 @@ class V2Hooks(LoggingHooks):
         self._data_dir.mkdir(parents=True, exist_ok=True)
         safe_id = arxiv_id.replace("/", "_")
         pdf_path = self._data_dir / f"{safe_id}.pdf"
+        txt_path = self._data_dir / f"{safe_id}.txt"
+
+        # Fast path: skip download entirely if extracted text already exists
+        if txt_path.exists() and txt_path.stat().st_size > 0:
+            logger.info("Text already extracted, skipping PDF download: %s", txt_path)
+            context["pdf_path"] = str(pdf_path)
+            return context
 
         # Fast path: skip semaphore entirely if PDF is cached
         if pdf_path.exists():
@@ -932,7 +946,8 @@ class V2Hooks(LoggingHooks):
                 if _is_rate_limit(error_str):
                     model = _resolve_rate_limit_model(context, error_str)
                     parsed_wait, source = _rate_limit_wait_seconds(error_str)
-                    wait_seconds = parsed_wait if parsed_wait is not None else _RATE_LIMIT_COOLDOWN
+                    base_wait = parsed_wait if parsed_wait is not None else _RATE_LIMIT_COOLDOWN
+                    wait_seconds = max(base_wait, _RATE_LIMIT_MIN_COOLDOWN_SECS)
                     delay, until_ts = _close_rate_limit_gate(model, wait_seconds, source)
                     logger.warning(
                         "Rate-limit window model=%s source=%s until=%s wait=%.1fs",
