@@ -27,7 +27,7 @@ data:
     write:
       agent: writer
       execution:
-        type: default
+        type: retry
       input:
         title: context.title
         key_outcome: context.key_outcome

@@ -194,12 +194,19 @@ Configured in `config/profiles.yml`:
 
 ## Persistence and resume
 
-All three machines checkpoint after every state transition. Checkpoints are stored
-in `data/checkpoints/{execution_id}/`. If the process dies:
+All three machines checkpoint after every state transition into the v2 SQLite DB
+(`machine_checkpoints` + `machine_latest` tables). If the process dies:
 
-1. Next run finds incomplete checkpoints via `data/checkpoints/*/latest`
+1. Next run finds incomplete executions via DB latest pointers
 2. Resumes from the last completed state
-3. All intermediate results (key_outcome, section_text, etc.) are preserved
+3. Intermediate results are preserved
+
+Terminal checkpoint retention is configurable with
+`RPA_V2_TERMINAL_CHECKPOINT_POLICY`:
+- `keep_wrap_failed` (default)
+- `keep_failed`
+- `purge_all`
+- `keep_all`
 
 The runner always **resumes before starting new work** (depth-first completion).
 
