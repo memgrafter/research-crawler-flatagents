@@ -1,0 +1,210 @@
+# Word Cloud: Organic Semantic ML+LLM Terms
+# generated_by: generate_word_list_organic_semantic.py
+# candidate_papers: 60650
+# year_prefix: 23
+# ngram_range: 2-4
+# include_unigrams: False
+# semantic_enabled: True
+# semantic_anchors: 34
+# embedding_model: dunzhang/stella_en_400M_v5
+# embedding_batch_size: 64
+# cleaned_by: cleanup_word_list.py
+# exclusions_applied: 73
+# removed_terms: 388
+
+large language model gpt-4
+language model gpt-4
+language model gpt-3
+seq2seq model
+transformer t5
+4-bit quantization
+chatgpt gpt-4
+transformer gpt-4
+sequence-to-sequence seq2seq model
+fine-tuned t5
+e2e model
+gpt-3 model
+gpt-4 model
+sequence-to-sequence seq2seq
+bert gpt-2
+gpt-2 model
+prompt gpt-4
+chatgpt gpt-3.5
+llama-2 model
+chatgpt 3.5
+t5 model
+t2i model
+chatgpt gpt-3
+gpt-4 chatgpt
+chatgpt-3.5 chatgpt-4
+openai gpt-4
+gpt-4 prompt
+openai gpt-3.5
+prompting gpt-4
+gpt-3 chatgpt
+grapheme-to-phoneme g2p
+l2 regularization
+openai gpt-3
+gpt-4 large
+leveraging gpt-4
+speech-to-speech translation s2st
+yolov8 model
+yolov5 model
+ell_1 regularization
+cifar10 dataset
+gpt-3.5 model
+chatgpt gpt4
+cifar100 dataset
+cifar10 cifar100
+dataset cifar10
+qm9 dataset
+t2i diffusion model
+chatgpt gpt-3.5 gpt-4
+gpt-3.5 gpt-4
+dataset gpt-4
+6d pose
+experiment cifar10
+d4rl benchmark
+t2i generation
+r2 score
+4-bit weight
+wav2vec 2.0
+vgg16 vgg19
+leverage gpt-4
+gpt-4 evaluation
+unicode x2013
+6d object pose
+era5 reanalysi
+6d poses
+end-to-end e2e
+gpt-4 demonstrate
+peer-to-peer p2p
+gpt-4 demonstrated
+dataset 100k
+translation s2st
+industry 4.0
+gpt-4 achieved
+unicode x2014
+evaluation gpt-4
+l1 l2
+gpt 3.5
+sim2real transfer
+v2 dataset
+llama 7b
+ell_2 norm
+l_2 norm
+device-to-device d2d
+2.0 dataset
+text-to-video t2v
+1.5 times
+2-wasserstein distance
+2.5 times
+mathcal 1/t
+gpt-4 achieve
+6-dof grasp
+human3.6m mpi-inf-3dhp
+6d object
+t2i diffusion
+f_1 score
+4d radar
+gpt-4 llama
+gpt-4 was
+1.8 times
+mathcal 1/k
+less than 0.1
+while gpt-4
+llm gpt-4
+than 0.1
+ell_1 norm
+compared gpt-4
+e2e asr
+ell_0 norm
+gpt-4 ability
+gpt-3 gpt-4
+find gpt-4
+10x faster
+f-1 score
+squad 2.0
+result gpt-4
+sixth-generation 6g
+tilde 2/3
+gpt-4v ision
+gpt-4 gpt-3.5
+gpt-4 perform
+tilde 1/2
+gpt-3.5-turbo gpt-4
+gpt-3 gpt-3.5
+a100 gpus
+gpt-4 shown
+a100 gpu
+ell_1 ell_2
+gpt-4 which
+7-dof robot
+than 0.5
+gpt-2 gpt-3
+llm gpt-3.5
+7b parameter
+unitree a1
+1.3 billion
+3x faster
+rate 1/2
+1.5 million
+gpt-4 more
+found gpt-4
+gpt-4 exhibit
+gpt-4 code
+13b parameter
+1.2 million
+gpt-4 also
+gpt-4 result
+gsm8k math
+experiment gpt-4
+v100 gpus
+than gpt-3.5
+gpt-4 claude
+gpt-3.5 turbo
+gpt-2 small
+v100 gpu
+up 2x
+specifically gpt-4
+than gpt-4
+175b parameter
+up 10x
+2/3 regret
+sim2real gap
+capabilitie gpt-4
+apache 2.0
+nvidia a100 gpu
+vehicle-to-everything v2x
+gpt3.5 gpt4
+7b 13b
+up 20x
+up 4x
+up 3x
+4.0 license
+gpt-4 human
+ell_2 error
+5g radio
+nvidia a100
+5g beyond
+13b 70b
+up 1.5
+2-3 times
+t5 bart
+roberta t5
+6g network
+up 5x
+up 6x
+bart t5
+human gpt-4
+21st century
+co2 emission
+vehicle-to-vehicle v2v
+nvidia v100
+5g network
+6g mobile
+6g wireless
+v2v communication
+v2x communication
+5g wireless
+0-1 loss

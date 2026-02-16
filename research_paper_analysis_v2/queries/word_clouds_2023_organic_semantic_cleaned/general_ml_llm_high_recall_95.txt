@@ -1,0 +1,476 @@
+# Word Cloud: General ML/LLM High-Recall (~95% target coverage)
+# source: 2024 shotgun candidates + existing seeds + fixed anchors
+
+large language model
+language model
+llm
+foundation model
+transformer
+self attention
+multi-head attention
+attention mechanism
+encoder-decoder
+decoder-only
+mixture of experts
+moe
+tokenization
+context window
+long context
+pretraining
+fine-tuning
+instruction tuning
+supervised fine-tuning
+rlhf
+dpo
+ppo
+reward model
+alignment
+ai safety
+jailbreak
+hallucination
+factuality
+reasoning
+chain of thought
+agent
+agentic
+tool use
+function calling
+retrieval augmented generation
+rag
+retrieval
+reranking
+vector database
+embedding model
+knowledge graph
+semantic search
+benchmark
+evaluation
+mmlu
+gsm8k
+truthfulqa
+multimodal
+vision-language
+diffusion
+quantization
+distillation
+pruning
+inference optimization
+latency
+throughput
+scaling law
+continual learning
+domain adaptation
+interpretability
+mechanistic interpretability
+attribution
+human-ai interaction
+prompt engineering
+synthetic data
+self-supervised learning
+contrastive learning
+large language model gpt-4
+language model gpt-4
+language model gpt-3
+seq2seq model
+transformer t5
+4-bit quantization
+chatgpt gpt-4
+transformer gpt-4
+sequence-to-sequence seq2seq model
+fine-tuned t5
+e2e model
+gpt-3 model
+gpt-4 model
+sequence-to-sequence seq2seq
+bert gpt-2
+gpt-2 model
+prompt gpt-4
+chatgpt gpt-3.5
+llama-2 model
+chatgpt 3.5
+t5 model
+t2i model
+chatgpt gpt-3
+gpt-4 chatgpt
+chatgpt-3.5 chatgpt-4
+openai gpt-4
+gpt-4 prompt
+openai gpt-3.5
+prompting gpt-4
+gpt-3 chatgpt
+grapheme-to-phoneme g2p
+l2 regularization
+openai gpt-3
+gpt-4 large
+leveraging gpt-4
+speech-to-speech translation s2st
+yolov8 model
+yolov5 model
+ell_1 regularization
+cifar10 dataset
+gpt-3.5 model
+chatgpt gpt4
+cifar100 dataset
+cifar10 cifar100
+dataset cifar10
+qm9 dataset
+t2i diffusion model
+chatgpt gpt-3.5 gpt-4
+gpt-3.5 gpt-4
+dataset gpt-4
+6d pose
+experiment cifar10
+d4rl benchmark
+t2i generation
+r2 score
+4-bit weight
+wav2vec 2.0
+vgg16 vgg19
+leverage gpt-4
+gpt-4 evaluation
+unicode x2013
+6d object pose
+era5 reanalysi
+6d poses
+end-to-end e2e
+gpt-4 demonstrate
+peer-to-peer p2p
+gpt-4 demonstrated
+dataset 100k
+translation s2st
+industry 4.0
+gpt-4 achieved
+unicode x2014
+evaluation gpt-4
+l1 l2
+gpt 3.5
+sim2real transfer
+v2 dataset
+llama 7b
+ell_2 norm
+l_2 norm
+device-to-device d2d
+2.0 dataset
+text-to-video t2v
+1.5 times
+2-wasserstein distance
+2.5 times
+mathcal 1/t
+gpt-4 achieve
+6-dof grasp
+human3.6m mpi-inf-3dhp
+6d object
+t2i diffusion
+f_1 score
+4d radar
+gpt-4 llama
+gpt-4 was
+1.8 times
+mathcal 1/k
+less than 0.1
+while gpt-4
+llm gpt-4
+than 0.1
+ell_1 norm
+compared gpt-4
+e2e asr
+ell_0 norm
+gpt-4 ability
+gpt-3 gpt-4
+find gpt-4
+10x faster
+f-1 score
+squad 2.0
+result gpt-4
+sixth-generation 6g
+tilde 2/3
+gpt-4v ision
+gpt-4 gpt-3.5
+gpt-4 perform
+tilde 1/2
+gpt-3.5-turbo gpt-4
+gpt-3 gpt-3.5
+a100 gpus
+gpt-4 shown
+a100 gpu
+ell_1 ell_2
+gpt-4 which
+7-dof robot
+than 0.5
+gpt-2 gpt-3
+llm gpt-3.5
+7b parameter
+unitree a1
+1.3 billion
+3x faster
+rate 1/2
+1.5 million
+gpt-4 more
+found gpt-4
+gpt-4 exhibit
+gpt-4 code
+13b parameter
+1.2 million
+gpt-4 also
+gpt-4 result
+gsm8k math
+experiment gpt-4
+v100 gpus
+than gpt-3.5
+gpt-4 claude
+gpt-3.5 turbo
+gpt-2 small
+v100 gpu
+up 2x
+specifically gpt-4
+than gpt-4
+175b parameter
+up 10x
+2/3 regret
+sim2real gap
+capabilitie gpt-4
+apache 2.0
+nvidia a100 gpu
+vehicle-to-everything v2x
+gpt3.5 gpt4
+7b 13b
+up 20x
+up 4x
+up 3x
+4.0 license
+gpt-4 human
+ell_2 error
+5g radio
+nvidia a100
+5g beyond
+13b 70b
+up 1.5
+2-3 times
+t5 bart
+roberta t5
+6g network
+up 5x
+up 6x
+bart t5
+human gpt-4
+21st century
+co2 emission
+vehicle-to-vehicle v2v
+nvidia v100
+5g network
+Self-Attention
+Feed-Forward Network
+LayerNorm
+Residual Connections
+Positional Encoding
+Embedding Layer
+Softmax
+Token Prediction
+Autoregressive
+Masked Language Modeling
+Causal Attention
+Bidirectional
+Flash Attention
+Sparse Attention
+Block Sparse Attention
+GPT
+BERT
+T5
+LLaMA
+Mistral
+Mixtral
+Claude
+PaLM
+Gemini
+Phi
+Qwen
+Falcon
+MPT
+OLMo
+Sparse MoE
+Dense Transformer
+Encoder-Only
+Vision Transformer (ViT)
+CLIP
+Diffusion Transformer
+Backpropagation
+Gradient Descent
+Adam Optimizer
+Learning Rate Schedule
+Warmup
+Weight Decay
+Dropout
+Batch Normalization
+Pre-training
+Reward Modeling
+Policy Gradient
+Actor-Critic
+Supervised Fine-Tuning (SFT)
+Curriculum Learning
+Chain-of-Thought
+Tree of Thoughts
+Self-Consistency
+Reasoning Traces
+Multi-Step Reasoning
+Mathematical Reasoning
+Logical Reasoning
+Commonsense Reasoning
+Causal Reasoning
+Analogical Reasoning
+Metacognition
+Reflection
+Self-Critique
+Deliberation
+Planning
+Decomposition
+Retrieval-Augmented Generation
+Dense Retrieval
+Sparse Retrieval
+Knowledge Base
+Embedding Similarity
+Query Expansion
+Document Chunking
+Hybrid Search
+BM25
+Contriever
+ColBERT
+Adversarial Attack
+Adversarial Defense
+Adversarial Training
+FGSM
+PGD
+C&W Attack
+Certified Robustness
+Randomized Smoothing
+Evasion Attack
+Poisoning Attack
+Backdoor Attack
+Data Poisoning
+Jailbreaking
+Red Teaming
+AI Alignment
+Constitutional AI
+Safety Cases
+Guardrails
+Content Filtering
+Refusal Training
+HumanEval
+HellaSwag
+WinoGrande
+ARC
+BIG-Bench
+GLUE
+SuperGLUE
+MT-Bench
+AlpacaEval
+LMSys Arena
+Perplexity
+BLEU
+ROUGE
+F1 Score
+Accuracy
+Calibration
+QAT
+PTQ
+INT8
+INT4
+FP16
+BF16
+Mixed Precision
+LoRA
+QLoRA
+Adapters
+Prefix Tuning
+Prompt Tuning
+Parameter-Efficient Fine-Tuning
+Knowledge Distillation
+Model Pruning
+Speculative Decoding
+KV Cache
+Gradient Checkpointing
+Pipeline Parallelism
+Tensor Parallelism
+Data Parallelism
+Vision-Language Model
+VQA
+Image Captioning
+Visual Grounding
+OCR
+Document Understanding
+Speech Recognition
+Text-to-Speech
+Audio-Language
+Video Understanding
+Multimodal Fusion
+Cross-Modal Attention
+LLaVA
+GPT-4V
+Gemini Pro Vision
+Serving Infrastructure
+Model Serving
+Batch Inference
+Real-Time Inference
+Edge Deployment
+Mobile AI
+Quantized Inference
+TensorRT
+ONNX
+vLLM
+TGI
+Model Compression
+On-Device AI
+Lifelong Learning
+Catastrophic Forgetting
+Experience Replay
+Elastic Weight Consolidation
+Progressive Nets
+Test-Time Adaptation
+Domain Shift
+Distribution Shift
+Online Learning
+Incremental Learning
+Task-Incremental
+Class-Incremental
+Explainable AI
+Feature Attribution
+Attention Visualization
+Saliency Maps
+Integrated Gradients
+SHAP
+LIME
+Concept Activation
+Probing
+Circuit Analysis
+Superposition
+Sparse Autoencoders
+Representation Analysis
+Activation Patching
+Human Feedback
+Preference Learning
+Comparative Feedback
+Scalar Feedback
+Reward Hacking
+Specification Gaming
+Sycophancy
+Helpfulness
+Harmlessness
+Honesty
+User Intent
+Instruction Following
+Conversational AI
+Dialogue Systems
+Interactive Learning
+Pre-training Data
+Instruction Data
+Preference Data
+Data Augmentation
+Data Curation
+Data Filtering
+Deduplication
+Data Contamination
+Multi-Task Learning
+Transfer Learning
+Cross-Lingual Transfer
+Few-Shot Learning
+Zero-Shot Learning
+In-Context Learning

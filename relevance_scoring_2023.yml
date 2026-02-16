@@ -1,4 +1,4 @@
-# One-off 2024 relevance scoring configuration.
+# One-off 2023 relevance scoring configuration.
 embedding:
   model: dunzhang/stella_en_400M_v5
   trust_remote_code: true
@@ -12,7 +12,7 @@ embedding:
   batch_size: 64
   query_prompt: "Instruct: Given a web search query, retrieve relevant passages that answer the query.\nQuery: "
 
-# Inline anchors can be kept minimal; files are primary source for this one-off.
+# Minimal inline anchors; files are primary source.
 anchors:
   - large language model
   - language model
@@ -21,10 +21,11 @@ anchors:
   - agent
   - reasoning
 
-# Use all generated 2024 clouds together.
+# Use cleaned 2023 clouds as primary anchor source.
 anchor_files:
-  - research_paper_analysis_v2/queries/word_clouds_2024/*.txt
+  - research_paper_analysis_v2/queries/word_clouds_2023_organic_semantic_cleaned/*.txt
 
-# LLM-only pass: explicitly remove broad/generic/domain terms.
+# LLM-pass exclusions (base + artifact cleanup v2).
 anchor_exclude_files:
-  - research_paper_analysis_v2/queries/word_clouds_2024/llm_pass_exclusions_2024.list
+  - research_paper_analysis_v2/queries/word_clouds_2023_organic_semantic/llm_pass_exclusions_2023.list
+  - research_paper_analysis_v2/queries/word_clouds_2023_organic_semantic/llm_pass_exclusions_2023_artifact_noise_v2.list

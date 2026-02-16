@@ -12,7 +12,7 @@ Pipeline command:
 
 ```bash
 cd research_paper_analysis_v2
-./build_word_clouds_2024.sh
+./build_word_clouds.sh
 ```
 
 This runs two steps:

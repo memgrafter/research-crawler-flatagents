@@ -1,0 +1,59 @@
+# Explicit exclusions for 2023 organic LLM-focused term mining.
+# Goal: suppress CV/vision/biomed/metric bleed and boilerplate phrase noise.
+
+3d
+2d
+1d
+point cloud
+mesh
+voxel
+multi-view
+multiview
+neural radiance field
+nerf
+object detection
+semantic segmentation
+image segmentation
+scene understanding
+pose estimation
+human pose
+depth estimation
+video generation
+text-to-image
+text-to-3d
+image-to-image
+medical image
+mri
+ct
+x-ray
+radiology
+eeg
+ecg
+covid-19
+patient
+clinical
+
+cifar
+imagenet
+mnist
+top-1
+top-5
+f1
+f1 score
+f1-score
+precision
+recall
+auc
+bleu
+rouge
+
+such
+including
+like
+e.g
+i.e
+etc
+
+performance
+accuracy
+benchmark 3d

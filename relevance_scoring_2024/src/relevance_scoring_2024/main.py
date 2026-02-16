@@ -1,9 +1,9 @@
 """
-Local embedding-based FMR 2024 scoring.
+Local embedding-based FMR scoring (year/column parameterized).
 
 Usage:
-    python -m relevance_scoring_2024.main --limit 200 --dry-run
-    ./run.sh -- --limit 500 --year-prefix 24
+    python -m relevance_scoring_2024.main --target-score-column fmr_2023 --year-prefix 23 --limit 200 --dry-run
+    ./run.sh -- --target-score-column fmr_2024 --year-prefix 24 --limit 500
 """
 
 import argparse
@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Local embedding-based FMR 2024 scoring"
+        description="Local embedding-based FMR scoring"
     )
     parser.add_argument(
         "--db-path",
@@ -36,6 +36,11 @@ def parse_args() -> argparse.Namespace:
         "--year-prefix",
         default="24",
         help="arXiv ID year prefix to score (default: 24)",
+    )
+    parser.add_argument(
+        "--target-score-column",
+        required=True,
+        help="Destination paper_relevance column to write (required, e.g. fmr_2023 / fmr_2024 / fmr_score)",
     )
     parser.add_argument(
         "--since",
@@ -62,7 +67,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--rescore-existing",
         action="store_true",
-        help="Recompute fmr_2024 even when already present",
+        help="Recompute target-score-column even when already present",
     )
     parser.add_argument(
         "--dry-run",
@@ -80,6 +85,7 @@ async def run(args: argparse.Namespace) -> dict:
         "db_path": args.db_path,
         "config_path": args.config_path,
         "year_prefix": args.year_prefix,
+        "target_score_column": args.target_score_column,
         "since": args.since,
         "until": args.until,
         "limit": args.limit,
@@ -88,7 +94,11 @@ async def run(args: argparse.Namespace) -> dict:
         "dry_run": args.dry_run,
     }
 
-    logger.info("Starting FMR 2024 scoring")
+    logger.info(
+        "Starting FMR scoring year_prefix=%s target_score_column=%s",
+        args.year_prefix,
+        args.target_score_column,
+    )
     result = await machine.execute(input=payload)
     logger.info("Scoring finished: %s", result)
     return result
