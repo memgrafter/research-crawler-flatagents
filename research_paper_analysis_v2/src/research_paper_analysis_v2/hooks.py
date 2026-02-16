@@ -51,8 +51,9 @@ logger = get_logger(__name__)
 # Transient error classification
 # ---------------------------------------------------------------------------
 _TRANSIENT_PATTERNS = (
-    "serviceunavailableerror", "503",
-    "ratelimiterror", "rate_limit", "429",
+    "serviceunavailableerror",
+    "ratelimiterror",
+    "rate_limit",
     "peer closed connection",
     "broken pipe",
     "connection reset by peer",
@@ -79,6 +80,20 @@ _BLANK_TRANSIENT_ERROR_TYPES = {
     "WriteError",
     "ProtocolError",
 }
+
+# Prompt/context overflow (permanent) patterns.
+_CONTEXT_OVERFLOW_PATTERNS = (
+    "maximum context length",
+    "context length is",
+    "context window",
+    "requested about",
+    "tokens (",
+    "middle-out",
+    "context_overflow",
+)
+_CONTEXT_OVERFLOW_HEURISTIC_TOKENS = int(
+    os.environ.get("RPA_V2_CONTEXT_OVERFLOW_HEURISTIC_TOKENS", "120000")
+)
 
 # Per-model 429 gates — each model has its own asyncio.Event, starts open (set).
 # Cleared on 429 detection for that model, re-set after cooldown / reset header.
@@ -165,13 +180,160 @@ def any_rate_limit_gate_closed() -> bool:
     return any(not ev.is_set() for ev in _RATE_LIMIT_GATES.values())
 
 
+def _contains_http_status_code(text: str, code: int) -> bool:
+    # Use status-oriented matching so ids like 2503.10298 do not accidentally
+    # trigger code checks for 503.
+    code_s = str(code)
+    return bool(
+        re.search(rf"status\s*[=:]\s*{code_s}\b", text)
+        or re.search(rf"http\S*\s+{code_s}\b", text)
+        or re.search(rf"\b{code_s}\s+(service unavailable|too many requests|not found)\b", text)
+    )
+
+
 def _is_transient(error: str) -> bool:
     text = (error or "").lower()
-    return any(p in text for p in _TRANSIENT_PATTERNS)
+    if any(p in text for p in _TRANSIENT_PATTERNS):
+        return True
+    if _contains_http_status_code(text, 503):
+        return True
+    return False
 
 
 def _is_rate_limit(error: str) -> bool:
-    return "429" in error or "RateLimitError" in error or "rate_limit" in error.lower()
+    text = (error or "").lower()
+    return (
+        "ratelimiterror" in text
+        or "rate_limit" in text
+        or _contains_http_status_code(text, 429)
+    )
+
+
+def _is_http_404_not_found(error: str) -> bool:
+    text = (error or "").lower()
+    return _contains_http_status_code(text, 404) or "404 not found" in text
+
+
+def _normalize_pdf_not_found_error(error: str) -> str:
+    cleaned = " ".join((error or "").split())
+    if not cleaned:
+        return "pdf_404: PDF URL returned HTTP 404"
+    return f"pdf_404: {cleaned[:900]}"
+
+
+def _is_context_overflow(error: str) -> bool:
+    text = (error or "").lower()
+    return any(p in text for p in _CONTEXT_OVERFLOW_PATTERNS)
+
+
+def _approx_tokens_from_text(text: str) -> int:
+    # Rough estimate used only for error classification fallback.
+    return max(1, math.ceil(len(text) / 4.0))
+
+
+def _extract_error_fragments(value: Any, out: List[str]) -> None:
+    if value is None:
+        return
+
+    if isinstance(value, str):
+        text = value.strip()
+        if text:
+            out.append(text)
+        return
+
+    if isinstance(value, BaseException):
+        text = str(value).strip()
+        if text:
+            out.append(text)
+        return
+
+    if isinstance(value, dict):
+        priority_keys = ("message", "error", "detail", "reason", "description", "type", "code")
+        for key in priority_keys:
+            if key in value:
+                _extract_error_fragments(value.get(key), out)
+        for key, nested in value.items():
+            if key in priority_keys:
+                continue
+            if isinstance(nested, (dict, list, tuple)):
+                _extract_error_fragments(nested, out)
+        if not out:
+            try:
+                out.append(json.dumps(value, ensure_ascii=False))
+            except Exception:
+                pass
+        return
+
+    if isinstance(value, (list, tuple, set)):
+        for item in value:
+            _extract_error_fragments(item, out)
+        return
+
+    text = str(value).strip()
+    if text and text != "None":
+        out.append(text)
+
+
+def _extract_error_from_context(context: Dict[str, Any]) -> str:
+    fragments: List[str] = []
+    for key in (
+        "last_error",
+        "error",
+        "exception",
+        "last_exception",
+        "agent_error",
+        "machine_error",
+        "_error",
+        "_last_error",
+    ):
+        if key in context:
+            _extract_error_fragments(context.get(key), fragments)
+
+    if not fragments:
+        return ""
+
+    unique: List[str] = []
+    seen = set()
+    for frag in fragments:
+        norm = frag.strip()
+        if not norm:
+            continue
+        key = norm[:800]
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(norm)
+        if len(unique) >= 3:
+            break
+
+    merged = " | ".join(unique)
+    return merged[:4000]
+
+
+def _normalize_context_overflow_error(error: str) -> str:
+    cleaned = " ".join((error or "").split())
+    if not cleaned:
+        return "context_overflow: prompt exceeds model context length"
+    return f"context_overflow: {cleaned[:900]}"
+
+
+def _infer_context_overflow_from_heuristics(context: Dict[str, Any], error_type: str) -> Optional[str]:
+    lowered_type = (error_type or "").lower()
+    if "badrequest" not in lowered_type and "invalidrequest" not in lowered_type:
+        return None
+
+    paper_text = context.get("paper_text")
+    if not isinstance(paper_text, str) or not paper_text:
+        return None
+
+    approx_tokens = _approx_tokens_from_text(paper_text)
+    if approx_tokens < _CONTEXT_OVERFLOW_HEURISTIC_TOKENS:
+        return None
+
+    return (
+        "context_overflow: likely prompt/context overflow "
+        f"(paper_text≈{approx_tokens} tokens, threshold={_CONTEXT_OVERFLOW_HEURISTIC_TOKENS})"
+    )
 
 
 def _parse_rate_limit_reset_ts(error: str) -> Optional[float]:
@@ -916,11 +1078,7 @@ class V2Hooks(LoggingHooks):
     async def _mark_execution_failed(self, context: Dict[str, Any]) -> Dict[str, Any]:
         execution_id = self._norm(context.get("execution_id"))
 
-        raw_error = context.get("last_error")
-        if raw_error is None or (isinstance(raw_error, str) and not raw_error.strip()):
-            raw_error = context.get("error")
-
-        error_str = str(raw_error).strip() if raw_error is not None else ""
+        error_str = _extract_error_from_context(context)
         error_type = str(context.get("last_error_type") or "").strip()
         stage_hint = str(context.get("last_error_stage") or "").strip()
 
@@ -932,6 +1090,17 @@ class V2Hooks(LoggingHooks):
             else:
                 error_str = "unknown error"
 
+        if _is_context_overflow(error_str):
+            error_str = _normalize_context_overflow_error(error_str)
+        elif error_str == "unknown error":
+            inferred_overflow = _infer_context_overflow_from_heuristics(context, error_type)
+            if inferred_overflow:
+                error_str = inferred_overflow
+
+        permanent_pdf_404 = stage_hint == "download_pdf" and _is_http_404_not_found(error_str)
+        if permanent_pdf_404:
+            error_str = _normalize_pdf_not_found_error(error_str)
+
         # Ensure machine final output contains a concrete error string.
         context["last_error"] = error_str
         if error_type:
@@ -940,8 +1109,9 @@ class V2Hooks(LoggingHooks):
         global _PONY_100_MODE_UNTIL_TS
 
         if execution_id:
-            # Transient HTTP errors → reset to phase for re-pickup
-            if force_transient or _is_transient(error_str):
+            # Transient HTTP errors → reset to phase for re-pickup.
+            # Explicit exception: download_pdf HTTP 404 is permanent for this run.
+            if (not permanent_pdf_404) and (force_transient or _is_transient(error_str)):
                 # Fire per-model 429 gate if rate-limited
                 if _is_rate_limit(error_str):
                     model = _resolve_rate_limit_model(context, error_str)
