@@ -1,13 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build 2024 word clouds in two steps:
-# 1) Generate shotgun candidate terms from 2024 title+abstract (heuristic-only)
+# Build ML/LLM word clouds in two steps (defaults target 2024):
+# 1) Generate shotgun candidate terms from title+abstract (heuristic-only)
 # 2) Split into per-cloud files + one general high-recall cloud
 #
-# Usage:
-#   ./build_word_clouds_2024.sh
-#   ./build_word_clouds_2024.sh --db ../arxiv_crawler/data/arxiv.sqlite --min-score 0.30 --top-papers 20000
+# This script can be reused for backfills across year slices by changing
+# --year-prefix and score columns.
+#
+# Examples:
+#   # 2023 backfill (year-specific score + fallback)
+#   ./build_word_clouds.sh \
+#     --year-prefix 23 --score-column fmr_2023 --fallback-score-column fmr_score \
+#     --output-dir queries/word_clouds_2023 --output-file shotgun_ml_llm_2023.txt \
+#     --csv-output data/word_list_2023_candidates.csv
+#
+#   # 2024 backfill (year-specific score + fallback)
+#   ./build_word_clouds.sh \
+#     --year-prefix 24 --score-column fmr_2024 --fallback-score-column fmr_score \
+#     --output-dir queries/word_clouds_2024 --output-file shotgun_ml_llm_2024.txt \
+#     --csv-output data/word_list_2024_candidates.csv
+#
+#   # 2025/current pass (rolling score)
+#   ./build_word_clouds.sh \
+#     --year-prefix 25 --score-column fmr_score --fallback-score-column fmr_score \
+#     --output-dir queries/word_clouds_2025 --output-file shotgun_ml_llm_2025.txt \
+#     --csv-output data/word_list_2025_candidates.csv
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -30,7 +48,11 @@ GENERAL_CAP="2200"
 
 print_help() {
   cat <<'HELP'
-Usage: build_word_clouds_2024.sh [options]
+Usage: build_word_clouds.sh [options]
+
+Note:
+  Reuse for year/date backfills by changing --year-prefix and score columns
+  (arXiv YY slices like 23/24/25).
 
 Options:
   --db PATH                 Path to arXiv sqlite DB
@@ -135,7 +157,7 @@ if [[ ! -f "$DB_PATH" ]]; then
   exit 1
 fi
 
-echo "Building 2024 word clouds"
+echo "Building word clouds"
 echo "  DB:                 $DB_PATH"
 echo "  year prefix:        $YEAR_PREFIX"
 echo "  score column:       $SCORE_COLUMN (fallback: $FALLBACK_SCORE_COLUMN)"

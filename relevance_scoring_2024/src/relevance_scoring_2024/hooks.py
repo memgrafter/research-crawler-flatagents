@@ -35,6 +35,15 @@ def parse_bool(value: Any) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "y"}
 
 
+def validate_identifier(name: str) -> str:
+    raw = str(name or "").strip()
+    if not raw:
+        raise ValueError("target_score_column must be set")
+    if not raw.replace("_", "").isalnum() or not (raw[0].isalpha() or raw[0] == "_"):
+        raise ValueError(f"Invalid SQL identifier: {raw}")
+    return raw
+
+
 class ScoringHooks(MachineHooks):
     def __init__(self) -> None:
         self.logger = get_logger(__name__)
@@ -52,9 +61,13 @@ class ScoringHooks(MachineHooks):
             raise ValueError(f"Unknown action: {action_name}")
         return handler(context)
 
+    def _target_score_column(self, context: Dict[str, Any]) -> str:
+        return validate_identifier(context.get("target_score_column"))
+
     def _init_db(self, context: Dict[str, Any]) -> Dict[str, Any]:
         db_path = Path(context["db_path"])
         db_path.parent.mkdir(parents=True, exist_ok=True)
+        target_score_column = self._target_score_column(context)
 
         schema_path = Path(__file__).resolve().parents[2] / "schema.sql"
         schema_sql = schema_path.read_text()
@@ -65,16 +78,20 @@ class ScoringHooks(MachineHooks):
         self._ensure_column(
             conn,
             table="paper_relevance",
-            column="fmr_2024",
-            ddl="fmr_2024 REAL",
+            column=target_score_column,
+            ddl=f"{target_score_column} REAL",
         )
         self._ensure_index(
             conn,
-            name="idx_paper_relevance_fmr_2024",
-            ddl="CREATE INDEX IF NOT EXISTS idx_paper_relevance_fmr_2024 ON paper_relevance(fmr_2024)",
+            name=f"idx_paper_relevance_{target_score_column}",
+            ddl=(
+                f"CREATE INDEX IF NOT EXISTS idx_paper_relevance_{target_score_column} "
+                f"ON paper_relevance({target_score_column})"
+            ),
         )
         conn.commit()
         conn.close()
+        context["target_score_column"] = target_score_column
         return context
 
     def _load_config(self, context: Dict[str, Any]) -> Dict[str, Any]:
@@ -106,7 +123,7 @@ class ScoringHooks(MachineHooks):
             self.logger.info("Applied anchor exclusions: removed %d terms", removed)
 
         if not anchors:
-            raise ValueError("No anchors found in relevance_scoring_2024.yml")
+            raise ValueError(f"No anchors found in config: {config_path}")
 
         context["anchors"] = anchors
         context["model_name"] = embedding_cfg.get(
@@ -133,6 +150,7 @@ class ScoringHooks(MachineHooks):
 
         db_path = Path(context["db_path"])
         year_prefix = str(context.get("year_prefix") or "24").strip()
+        target_score_column = self._target_score_column(context)
         since = normalize_date(context.get("since"))
         until = normalize_date(context.get("until"), is_end=True)
         rescore_existing = parse_bool(context.get("rescore_existing"))
@@ -147,7 +165,7 @@ class ScoringHooks(MachineHooks):
             where_clauses.append("COALESCE(p.updated_at, p.published_at) <= ?")
             params.append(until)
         if not rescore_existing:
-            where_clauses.append("(pr.paper_id IS NULL OR pr.fmr_2024 IS NULL)")
+            where_clauses.append(f"(pr.paper_id IS NULL OR pr.{target_score_column} IS NULL)")
 
         query = f"""
             SELECT p.id, p.title, p.abstract
@@ -179,6 +197,7 @@ class ScoringHooks(MachineHooks):
             return context
 
         anchors = context.get("anchors") or []
+        target_score_column = self._target_score_column(context)
         model_name = context.get("model_name") or "sentence-transformers/all-MiniLM-L6-v2"
         trust_remote_code = bool(context.get("trust_remote_code"))
         model_kwargs = context.get("model_kwargs") or None
@@ -196,7 +215,10 @@ class ScoringHooks(MachineHooks):
             config_kwargs=config_kwargs,
         )
         self.logger.info(
-            "Scoring %d papers in batches of %d", total_targets, batch_size
+            "Scoring %d papers in batches of %d (target column: %s)",
+            total_targets,
+            batch_size,
+            target_score_column,
         )
 
         if query_prompt:
@@ -238,49 +260,94 @@ class ScoringHooks(MachineHooks):
                 batch_scored.append(
                     {
                         "paper_id": item["paper_id"],
-                        "fmr_2024": float(score),
+                        "score": float(score),
                         "best_anchor": anchors[int(anchor_idx)],
                     }
                 )
 
             if not dry_run and db_path:
-                self._write_batch_scores(db_path, batch_scored)
+                self._write_batch_scores(
+                    db_path,
+                    batch_scored,
+                    target_score_column=target_score_column,
+                )
             scored_count += len(batch_scored)
 
         context["scored"] = []
         context["scored_count"] = scored_count
         return context
 
-    def _write_batch_scores(self, db_path: Path, batch: List[Dict[str, Any]]) -> None:
-        """Write a batch of 2024 scores to the database immediately."""
+    def _write_batch_scores(
+        self,
+        db_path: Path,
+        batch: List[Dict[str, Any]],
+        *,
+        target_score_column: str,
+    ) -> None:
+        """Write a scored batch to the selected score column immediately."""
+        target_score_column = validate_identifier(target_score_column)
         conn = sqlite3.connect(db_path)
         conn.execute("PRAGMA foreign_keys = ON;")
         now = utc_now_iso()
+        method_tag = f"embedding_max_{target_score_column}"
 
-        for item in batch:
-            conn.execute(
-                """
+        if target_score_column == "fmr_score":
+            sql = """
                 INSERT INTO paper_relevance (
-                    paper_id, fmr_score, fmr_2024, scored_at, details_json
+                    paper_id, fmr_score, scored_at, details_json
+                )
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(paper_id) DO UPDATE SET
+                    fmr_score = excluded.fmr_score,
+                    scored_at = excluded.scored_at,
+                    details_json = excluded.details_json
+            """
+            for item in batch:
+                conn.execute(
+                    sql,
+                    (
+                        item["paper_id"],
+                        item["score"],
+                        now,
+                        json.dumps(
+                            {
+                                "best_anchor": item["best_anchor"],
+                                "method": method_tag,
+                                "target_score_column": target_score_column,
+                            },
+                            ensure_ascii=True,
+                        ),
+                    ),
+                )
+        else:
+            sql = f"""
+                INSERT INTO paper_relevance (
+                    paper_id, fmr_score, {target_score_column}, scored_at, details_json
                 )
                 VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(paper_id) DO UPDATE SET
-                    fmr_2024 = excluded.fmr_2024
-                """,
-                (
-                    item["paper_id"],
-                    item["fmr_2024"],
-                    item["fmr_2024"],
-                    now,
-                    json.dumps(
-                        {
-                            "best_anchor": item["best_anchor"],
-                            "method": "embedding_max_2024",
-                        },
-                        ensure_ascii=True,
+                    {target_score_column} = excluded.{target_score_column},
+                    scored_at = excluded.scored_at,
+                    details_json = excluded.details_json
+            """
+            for item in batch:
+                conn.execute(
+                    sql,
+                    (
+                        item["paper_id"],
+                        item["score"],
+                        item["score"],
+                        now,
+                        json.dumps(
+                            {
+                                "best_anchor": item["best_anchor"],
+                                "method": method_tag,
+                                "target_score_column": target_score_column,
+                            },
+                            ensure_ascii=True,
+                        ),
                     ),
-                ),
-            )
+                )
 
         conn.commit()
         conn.close()

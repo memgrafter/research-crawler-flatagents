@@ -8,6 +8,7 @@ data:
     db_path: "{{ input.db_path }}"
     config_path: "{{ input.config_path }}"
     year_prefix: "{{ input.year_prefix | default('24') }}"
+    target_score_column: "{{ input.target_score_column }}"
     since: "{{ input.since }}"
     until: "{{ input.until }}"
     limit: "{{ input.limit }}"
@@ -60,5 +61,5 @@ data:
         error: "{{ context.error }}"
 
 metadata:
-  description: "One-off 2024 embedding-based FMR scoring"
-  tags: ["fmr", "2024", "embeddings", "sqlite"]
+  description: "Embedding-based FMR scoring (parameterized year + score column)"
+  tags: ["fmr", "embeddings", "sqlite"]

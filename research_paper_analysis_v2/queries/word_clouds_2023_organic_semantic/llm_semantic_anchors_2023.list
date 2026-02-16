@@ -1,0 +1,37 @@
+# LLM-focused semantic anchors for 2023 organic term mining.
+# Keep this list tightly scoped to language-model research concepts.
+
+large language model
+language model
+foundation model
+transformer
+self attention
+multi-head attention
+tokenization
+context window
+long context
+instruction tuning
+supervised fine-tuning
+fine-tuning
+rlhf
+dpo
+ppo
+reward model
+alignment
+ai safety
+hallucination
+factuality
+reasoning
+chain of thought
+tool use
+function calling
+agentic
+retrieval augmented generation
+rag
+reranking
+embedding model
+knowledge graph
+prompt engineering
+inference optimization
+distillation
+quantization

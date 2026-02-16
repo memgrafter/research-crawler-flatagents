@@ -1,0 +1,595 @@
+# Word Cloud: Organic Semantic ML+LLM Terms
+# generated_by: generate_word_list_organic_semantic.py
+# candidate_papers: 60650
+# year_prefix: 23
+# ngram_range: 2-4
+# include_unigrams: False
+# semantic_enabled: True
+# semantic_anchors: 34
+# embedding_model: dunzhang/stella_en_400M_v5
+# embedding_batch_size: 64
+
+f1 score
+large language model gpt-4
+language model gpt-4
+language model gpt-3
+seq2seq model
+transformer t5
+4-bit quantization
+transformer 3d
+chatgpt gpt-4
+transformer gpt-4
+3d object
+3d model
+sequence-to-sequence seq2seq model
+supervised 3d
+fine-tuned t5
+3d point
+e2e model
+ranks 1st
+cifar-10 dataset
+cifar-10 cifar-100
+2.0 model
+trained cifar-10
+gpt-3 model
+text-to-image t2i model
+ranked 1st
+mnist cifar-10
+modeling 3d
+gpt-4 model
+sequence-to-sequence seq2seq
+covid-19 pandemic
+wav2vec 2.0 model
+bert gpt-2
+3d scene
+gpt-2 model
+prompt gpt-4
+3d supervision
+chatgpt gpt-3.5
+llama-2 model
+chatgpt 3.5
+3d point cloud
+diffusion model 3d
+3d object detection
+7b model
+t5 model
+large 3d
+t2i model
+precision recall f1
+chatgpt gpt-3
+cifar-100 tiny
+3d reconstruction
+large-scale 3d
+accuracy f1
+gpt-4 chatgpt
+chatgpt-3.5 chatgpt-4
+openai gpt-4
+gpt-4 prompt
+cifar-100 dataset
+graph 3d
+mnist cifar-10 dataset
+mnist cifar10
+2d diffusion model
+2d graph
+openai gpt-3.5
+prompting gpt-4
+cifar-100 tiny imagenet
+gpt-3 chatgpt
+llama-7b model
+dataset cifar-10
+grapheme-to-phoneme g2p
+l2 regularization
+3d modeling
+openai gpt-3
+experiment mnist cifar10
+gpt-4 large
+text-to-image t2i generation
+leveraging gpt-4
+top-1 accuracy
+speech-to-speech translation s2st
+generated gpt-4
+experiment cifar-10
+yolov8 model
+outperform gpt-3.5
+cifar-100 imagenet
+13b model
+generated gpt-3
+yolov5 model
+used 3d
+ell_1 regularization
+extensive experiment cifar-10
+cifar10 dataset
+outperform gpt-4
+gpt-3.5 model
+pre-trained 2d
+2d image
+svhn cifar-10
+chatgpt gpt4
+cifar100 dataset
+dataset cifar-10 cifar-100
+cifar-10 imagenet
+3d generation
+cifar10 cifar100
+dataset cifar10
+qm9 dataset
+t2i diffusion model
+chatgpt gpt-3.5 gpt-4
+precision recall f1-score
+mnist cifar10 cifar100
+fashion-mnist cifar-10
+text-to-image t2i
+generated gpt-3.5
+accuracy f1 score
+cifar-10 cifar-100 imagenet
+experiment cifar-10 cifar-100
+gpt-4 generate
+recall f1 score
+10-fold cross-validation
+gpt-3.5 gpt-4
+dataset gpt-4
+gpt-4 generated
+6d pose
+top-1 accuracy imagenet
+3d scene graph
+generation 3d
+3d representation
+experiment cifar10
+text-to-3d generation
+cifar-10 cifar-100 dataset
+3d semantic
+accuracy cifar-10
+2d 3d
+cifar100 imagenet
+d4rl benchmark
+3d shape
+precision f1
+accuracy f1-score
+precision recall f1 score
+5-fold cross-validation
+performance cifar-10
+generated 3d
+imagenet-1k dataset
+gpt-3 generate
+t2i generation
+recall f1-score
+improvement f1
+3d brain
+precision f1 score
+r2 score
+3d generative
+cifar-10 celeba
+4-bit weight
+result cifar-10
+wav2vec 2.0
+gpt-4 outperform
+3d perception
+3d convolutional neural
+3d cnn
+improve f1
+2d vision
+f1 improvement
+3d convolutional neural network
+monocular 3d
+6d pose estimation
+3d cnns
+recall f1
+3d convolutional
+gpt-4 performance
+semantic 3d
+vgg16 vgg19
+3d structure
+3d environment
+speech-driven 3d facial
+1d convolutional neural network
+leverage gpt-4
+image 3d
+deep learning 3d
+1d convolutional neural
+representation 3d
+generating 3d
+improvement f1 score
+3d position
+gpt-4 evaluation
+generate 3d
+accuracy precision recall f1
+training 3d
+3d prior
+achieving f1-score
+2nd place
+underlying 3d
+3d human
+achieving f1
+unicode x2013
+achieving f1 score
+6d object pose estimation
+estimating 3d
+6d object pose
+3d semantic segmentation
+3d space
+improvement f1-score
+era5 reanalysi
+3d deep learning
+accurate 3d
+6d poses
+3d convolution
+end-to-end e2e
+gpt-4 demonstrate
+existing 3d
+3d human pose estimation
+speech-driven 3d
+2d diffusion
+3d mesh
+f1 score respectively
+3d mapping
+peer-to-peer p2p
+precise 3d
+3d vision
+learning 3d
+1d convolutional
+achieve f1
+1d cnn
+estimation 3d
+3d detection
+gpt-4 demonstrated
+weighted f1
+3d simulation
+f1 point
+3d meshe
+3d u-net
+quality 3d
+dataset 100k
+3d face
+predict 3d
+3d diffusion
+translation s2st
+3d annotation
+3d rendering
+3d instance
+information 3d
+3rd place
+segmentation 3d
+industry 4.0
+accuracy precision recall f1-score
+detection 3d
+reconstructing 3d
+3d data
+3d pose
+macro f1
+gpt-4 achieved
+achieve f1 score
+prediction 3d
+unicode x2014
+evaluation gpt-4
+top-5 accuracy
+localization 3d
+3d tracking
+l1 l2
+gpt 3.5
+sim2real transfer
+3d segmentation
+propose 3d
+achieve macro f1
+editing 3d
+v2 dataset
+efficient 3d
+llama 7b
+monocular 3d object
+represent 3d
+3d deep
+3d human pose
+poses 3d
+3d lidar
+3d bounding
+ell_2 norm
+l_2 norm
+during covid-19
+tracking 3d
+device-to-device d2d
+3d scene understanding
+3d information
+3d image
+achieve f1-score
+high-quality 3d
+2.0 dataset
+performance gpt-4
+3d visual
+3d pose estimation
+text-to-video t2v
+3d coordinate
+3d geometry
+3d map
+input 3d
+1.5 times
+three-dimensional 3d
+f1-score while
+diverse 3d
+realistic 3d
+1st place
+3d facial
+dense 3d
+2-wasserstein distance
+3d occupancy
+2.5 times
+performance 3d
+terms f1 score
+reconstruction 3d
+macro f1 score
+mathcal 1/t
+gpt-4 achieve
+6-dof grasp
+dataset 3d
+3d visualization
+reconstructed 3d
+performance gpt-3.5
+3d dataset
+3d gaussian
+proposed 3d
+2d convolution
+simulation 2d
+f1 score up
+estimate 3d
+covid-19 dataset
+human3.6m mpi-inf-3dhp
+6d object
+object 3d
+t2i diffusion
+improve 3d
+two 3d
+f_1 score
+object detection 3d
+terms f1-score
+4d radar
+achieved f1
+3d spatial
+complex 3d
+gpt-4 llama
+understanding 3d
+average f1
+3d poses
+gpt-4 was
+performance gpt-3
+1.8 times
+higher f1
+f1-score compared
+f1 score compared
+during covid-19 pandemic
+any 3d
+mathcal 1/k
+micro f1
+high-fidelity 3d
+data 3d
+less than 0.1
+terms f1
+2d grid
+f1 measure
+reconstruct 3d
+3d medical
+3d motion
+map 3d
+achieve macro f1 score
+3d virtual
+while gpt-4
+dynamic 3d
+present 3d
+llm gpt-4
+experiment 2d
+3d molecule generation
+3d world
+directly 3d
+benchmark 3d
+3d maps
+than 0.1
+build 3d
+ell_1 norm
+planning 3d
+interaction 3d
+3d body
+higher f1 score
+compared gpt-4
+field 3d
+f1 value
+3d object detection 3d
+3d object detector
+both 3d
+3d surface
+e2e asr
+3d detector
+ell_0 norm
+full 3d
+achieved f1-score
+f1 respectively
+variou 3d
+achieved f1 score
+3d feature
+average f1 score
+3d volume
+3d molecular
+gpt-4 ability
+3d printing
+3d voxel
+sparse 3d
+real-time 3d
+feature 3d
+gpt-3 gpt-4
+application 3d
+find gpt-4
+point cloud 3d
+10x faster
+3d hand
+3d human motion
+f-1 score
+squad 2.0
+network 3d
+3d asset
+result gpt-4
+state-of-the-art 3d
+sixth-generation 6g
+3d bounding boxes
+tilde 2/3
+3d content
+3d scene reconstruction
+robust 3d
+detection covid-19
+3d lidar point
+motion 3d
+gpt-4v ision
+prior 3d
+gpt-4 gpt-3.5
+gpt-4 perform
+perform 3d
+tilde 1/2
+existing 2d
+3d molecule
+gpt-3.5-turbo gpt-4
+3d geometric
+gpt-3 gpt-3.5
+problem 3d
+a100 gpus
+gpt-4 shown
+a100 gpu
+ell_1 ell_2
+gpt-4 which
+create 3d
+data 2d
+2d image 3d
+two-dimensional 2d
+lidar-based 3d
+2d object detection
+7-dof robot
+than 0.5
+gpt-2 gpt-3
+llm gpt-3.5
+7b parameter
+3d textured
+f1 metric
+2d 3d data
+result f1
+best f1-score
+diagnosi covid-19
+unitree a1
+1d 2d
+1.3 billion
+3x faster
+both 2d 3d
+rate 1/2
+3d point cloud data
+highest f1
+2d lidar
+1.5 million
+gpt-4 more
+high-resolution 3d
+video 3d
+found gpt-4
+covid-19 patient
+gpt-4 exhibit
+gpt-4 code
+both 2d
+13b parameter
+scene 3d
+macro-f1 score
+1.2 million
+macro f1-score
+data covid-19
+learn 3d
+gpt-4 also
+gpt-4 result
+cloud 3d
+average f1-score
+3d volumetric
+learning covid-19
+covid-19 detection
+3d geometrie
+analysi covid-19
+gsm8k math
+experiment gpt-4
+mean f1
+v100 gpus
+than gpt-3.5
+3d medical image
+about covid-19
+than 2d
+gpt-4 claude
+require 3d
+gpt-3.5 turbo
+3d lidar point cloud
+2d visual
+3d printed
+covid-19 diagnosi
+robot 3d
+complete 3d
+design 3d
+2d space
+highest f1 score
+3d indoor
+gpt-2 small
+v100 gpu
+covid-19 data
+up 2x
+specifically gpt-4
+than gpt-4
+175b parameter
+3d 2d
+3d ct
+up 10x
+2/3 regret
+sim2real gap
+overall f1
+capabilitie gpt-4
+2d object
+apache 2.0
+leverage 3d
+nvidia a100 gpu
+vehicle-to-everything v2x
+gpt3.5 gpt4
+7b 13b
+up 20x
+up 4x
+up 3x
+disease covid-19
+4.0 license
+image 2d
+2d slice
+covid-19 infection
+gpt-4 human
+ell_2 error
+2d feature
+5g radio
+nvidia a100
+spread covid-19
+protein 3d
+5g beyond
+13b 70b
+up 1.5
+2-3 times
+space 3d
+challenging 3d
+2d video
+t5 bart
+roberta t5
+6g network
+up 5x
+up 6x
+bart t5
+human gpt-4
+3d printer
+21st century
+covid-19 cases
+co2 emission
+vehicle-to-vehicle v2v
+12-lead ecg
+covid-19 vaccine
+nvidia v100
+5g network
+covid-19 case
+6g mobile
+covid-19 related
+impact covid-19
+case covid-19
+related covid-19
+coronaviru disease covid-19
+6g wireless
+covid-19 vaccination
+v2v communication
+v2x communication
+5g wireless
+0-1 loss

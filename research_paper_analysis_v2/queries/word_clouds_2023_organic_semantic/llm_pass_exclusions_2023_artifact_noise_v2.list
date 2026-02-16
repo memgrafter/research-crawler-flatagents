@@ -1,0 +1,33 @@
+# 2023 organic semantic cleanup (v2): artifact/noise-only exclusions.
+#
+# Scope: item (3) only — remove obvious leaderboard/reporting fragments and
+# awkward generated phrasing. This file intentionally avoids broad topical
+# removals so it can be layered on top of the base exclusions list.
+
+# Leaderboard / ranking fragments
+ranked 1st
+ranks 1st
+1st place
+2nd place
+3rd place
+
+# Reporting boilerplate
+10-fold cross-validation
+5-fold cross-validation
+cross-validation
+
+# Awkward generation / comparison phrasing
+generated gpt-4
+generated gpt-3
+generated gpt-3.5
+gpt-4 generate
+gpt-4 generated
+gpt-3 generate
+outperform gpt-4
+outperform gpt-3.5
+gpt-4 outperform
+
+# Generic numeric model shells
+2.0 model
+7b model
+13b model

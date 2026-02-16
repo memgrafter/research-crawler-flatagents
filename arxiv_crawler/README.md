@@ -52,13 +52,14 @@ python -m arxiv_crawler.backfill \
   --max-results 500
 ```
 
-2024 helper script with auto-resume and conservative rate limits:
+Helper scripts with auto-resume and conservative rate limits:
 
 ```bash
+./backfill_2023.sh
 ./backfill_2024.sh
 ```
 
-If needed, force a specific restart day:
+If needed, force a specific restart day (2024 helper):
 
 ```bash
 BACKFILL_START_DATE=2024-03-01 ./backfill_2024.sh
