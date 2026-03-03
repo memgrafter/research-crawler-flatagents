@@ -12,9 +12,7 @@ data:
     # Path to worker config (relative to this file's directory)
     worker_config_path: "paper_analysis_worker.yml"
   
-  hooks:
-    module: research_paper_analysis.distributed_hooks
-    class: DistributedPaperAnalysisHooks
+  hooks: "rpa-distributed"
   
   machines:
     paper_analysis_worker:

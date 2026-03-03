@@ -9,9 +9,7 @@ spec_version: "0.9.0"
 data:
   name: refiner
   profiles: ./profiles.yml
-  hooks:
-    module: research_paper_analysis.hooks
-    class: JsonValidationHooks
+  hooks: "rpa-json-validation"
 
   context:
     # Input from parent

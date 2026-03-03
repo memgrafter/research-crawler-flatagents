@@ -9,9 +9,7 @@ data:
   context:
     stale_threshold_seconds: 120
   
-  hooks:
-    module: research_paper_analysis.distributed_hooks
-    class: DistributedPaperAnalysisHooks
+  hooks: "rpa-distributed"
   
   states:
     start:
