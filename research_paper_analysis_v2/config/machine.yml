@@ -5,9 +5,7 @@ data:
   name: research-pipeline-v2
   profiles: ./profiles.yml
 
-  hooks:
-    module: research_paper_analysis_v2.hooks
-    class: V2Hooks
+  hooks: "rpa-v2"
 
   settings:
     max_steps: 30

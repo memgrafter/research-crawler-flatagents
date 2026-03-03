@@ -15,9 +15,7 @@ data:
     rate_limit_agent_states:
       - analyze_paper
   
-  hooks:
-    module: research_paper_analysis.distributed_hooks
-    class: DistributedPaperAnalysisHooks
+  hooks: "rpa-distributed"
   
   machines:
     analyzer: ./machine.yml
