@@ -1555,9 +1555,16 @@ class V2Hooks(LoggingHooks):
 
         sorted_tags = sorted(scores.items(), key=lambda kv: kv[1].get("weight", 0), reverse=True)
 
-        # Keep original ranking from research signal scoring.
-        terminology_tags = [tag for tag, _ in sorted_tags[:15]]
-        terminology_tag_meta = {tag: meta for tag, meta in sorted_tags[:15]}
+        # Filter: must appear in paper text (not just neighbors/taxonomy) and meet weight floor.
+        MIN_TAG_WEIGHT = 0.15
+        qualified_tags = [
+            (tag, meta) for tag, meta in sorted_tags
+            if meta.get("weight", 0) >= MIN_TAG_WEIGHT
+            and "paper_text" in (meta.get("sources") or [])
+        ]
+
+        terminology_tags = [tag for tag, _ in qualified_tags[:15]]
+        terminology_tag_meta = {tag: meta for tag, meta in qualified_tags[:15]}
 
         domain_scores = self._score_domain_tags(taxonomy, combined)
         domain_tags = [name for name, score in domain_scores[:4] if score > 0]
