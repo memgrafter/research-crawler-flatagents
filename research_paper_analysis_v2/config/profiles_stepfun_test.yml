@@ -1,0 +1,14 @@
+spec: flatprofiles
+spec_version: "1.0.0"
+
+data:
+  model_profiles:
+    prototype_structured:
+      name: openrouter/stepfun/step-3.5-flash:free
+      temperature: 1.0
+
+    prototype_reasoning:
+      name: openrouter/stepfun/step-3.5-flash:free
+      temperature: 1.0
+
+  default: prototype_structured
