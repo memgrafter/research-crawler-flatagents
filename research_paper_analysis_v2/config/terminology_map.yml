@@ -1,39 +1,23 @@
-# Starter terminology canonicalization map for clustering/search consistency
+# Terminology canonicalization map for clustering/search consistency.
 # Expand over time as you review produced reports.
+#
+# NOTE: Broad meta-technique terms (RAG, MoE, CoT, PEFT, instruction-tuning,
+# tool-use) were removed — their short aliases (rag, moe, cot, peft) caused
+# false-positive matches on unrelated papers.  These terms still live in
+# queries/word_clouds/ for domain_tags scoring; they just no longer pollute
+# the per-paper terminology_tags in frontmatter.
 
 transformers:
   - transformer
   - transformers
-  - attention model
 
 self-attention:
   - self attention
   - self-attention
-  - attention mechanism
 
-retrieval-augmented-generation:
-  - rag
-  - retrieval augmented generation
-  - retrieval-augmented generation
-
-instruction-tuning:
-  - instruction tuning
-  - instruction-tuned
-
-parameter-efficient-finetuning:
-  - peft
-  - parameter efficient fine tuning
-  - parameter-efficient fine-tuning
-
-mixture-of-experts:
-  - moe
-  - mixture of experts
-
-chain-of-thought:
-  - cot
-  - chain of thought
-
-tool-use:
-  - tool use
-  - function calling
-  - tool calling
+# Removed: retrieval-augmented-generation (alias "rag" matches storage/coverage/average)
+# Removed: instruction-tuning
+# Removed: parameter-efficient-finetuning (alias "peft" too short/ambiguous)
+# Removed: mixture-of-experts (alias "moe" matches Moeller, moebius, etc.)
+# Removed: chain-of-thought (alias "cot" matches mascot, boycott, etc.)
+# Removed: tool-use
