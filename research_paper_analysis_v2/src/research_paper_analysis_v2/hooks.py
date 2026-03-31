@@ -1653,17 +1653,21 @@ class V2Hooks(LoggingHooks):
         key_outcome = self._norm(context.get("key_outcome"))
         core_contribution = " ".join(self._sentences_from_markdown(key_outcome, max_sentences=2))
 
-        # Resolve model name from profiles for provenance tracking
+        # Resolve model names from profiles for provenance tracking
         model_used = ""
         try:
             profiles_path = self._project_root / "config" / "profiles.yml"
             if profiles_path.exists():
                 pdata = yaml.safe_load(profiles_path.read_text(encoding="utf-8")) or {}
                 inner = pdata.get("data") or pdata
-                default_name = inner.get("default") or ""
                 profile_map = inner.get("model_profiles") or {}
-                if default_name and default_name in profile_map:
-                    model_used = (profile_map[default_name] or {}).get("name", "")
+                seen = []
+                for pname in ("prototype_structured", "prototype_reasoning"):
+                    p = (profile_map.get(pname) or {})
+                    name = p.get("name", "") if isinstance(p, dict) else ""
+                    if name and name not in seen:
+                        seen.append(name)
+                model_used = " + ".join(seen) if seen else ""
         except Exception:
             pass
         if not model_used:
