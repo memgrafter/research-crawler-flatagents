@@ -1,4 +1,5 @@
 import json
+import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -8,6 +9,12 @@ import numpy as np
 import yaml
 from flatmachines import MachineHooks, get_logger
 from sentence_transformers import SentenceTransformer
+
+# Cap MPS memory pool to 60% of unified RAM by default.
+# Without this, PyTorch's MPS allocator grabs all available system memory (~15GB on 16GB Macs)
+# even though the model only needs ~3-5GB. Set to "0.0" to uncap.
+os.environ.setdefault("PYTORCH_MPS_HIGH_WATERMARK_RATIO", "0.6")
+os.environ.setdefault("PYTORCH_MPS_LOW_WATERMARK_RATIO", "0.5")
 
 
 def utc_now_iso() -> str:

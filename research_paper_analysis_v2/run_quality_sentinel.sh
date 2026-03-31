@@ -15,7 +15,7 @@ set -euo pipefail
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 VENV_PATH="${VENV_PATH:-$SCRIPT_DIR/.venv}"
 DATA_DIR="$SCRIPT_DIR/data"
-ANALYSIS_DIR="$HOME/code/analysis/ml_research_analysis_2024"
+ANALYSIS_DIR="$HOME/code/analysis/ml_research_analysis_2023"
 
 if [[ ! -x "$VENV_PATH/bin/python" ]]; then
   echo "Virtualenv not found at: $VENV_PATH" >&2
