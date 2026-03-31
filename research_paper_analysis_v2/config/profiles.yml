@@ -7,14 +7,13 @@ data:
     prototype_structured:
       #name: openrouter/openai/gpt-oss-120b:free
       #name: openrouter/upstage/solar-pro-3:free # unlimited, tool calling king?
-      name: openrouter/arcee-ai/trinity-large-preview:free # way higher rpm
+      #name: openrouter/arcee-ai/trinity-large-preview:free # way higher rpm
+      name: openrouter/stepfun/step-3.5-flash:free # eval winner: 450/600 vs trinity 309/600
       temperature: 1.0
 
     prototype_reasoning:
-      # Temporary override: pony-alpha has been retired/unavailable on OpenRouter.
-      # Route expensive phase to Trinity until a new reasoning model is selected.
-      #name: openrouter/stepfun/step-3.5-flash:free # reasoning are longer context
-      name: openrouter/arcee-ai/trinity-large-preview:free
+      #name: openrouter/arcee-ai/trinity-large-preview:free
+      name: openrouter/stepfun/step-3.5-flash:free # eval winner: 450/600 vs trinity 309/600
       temperature: 1.0
 
   default: prototype_structured
