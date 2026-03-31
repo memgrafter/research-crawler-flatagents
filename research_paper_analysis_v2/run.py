@@ -1007,7 +1007,7 @@ async def run_continuous(
             usage = get_daily_usage(conn)
             logger.info(
                 "Status: pending=%d prepping=%d prepped=%d analyzing=%d "
-                "analyzed=%d wrapping=%d done=%d failed=%d | budget=%d/%d | active_tasks=%d",
+                "analyzed=%d wrapping=%d done=%d failed=%d | budget=%s/%s | active_tasks=%d",
                 status_counts.get("pending", 0),
                 status_counts.get("prepping", 0),
                 status_counts.get("prepped", 0),
@@ -1016,7 +1016,7 @@ async def run_continuous(
                 status_counts.get("wrapping", 0),
                 status_counts.get("done", 0),
                 status_counts.get("failed", 0),
-                usage["total"], daily_budget,
+                usage["total"], daily_budget if daily_budget > 0 else "∞",
                 len(active),
             )
             last_stale_check = loop_time
@@ -1026,9 +1026,9 @@ async def run_continuous(
             logger.info("Shutdown requested. Draining %d active tasks.", len(active))
             break
 
-        # Budget gate
+        # Budget gate (0 = unlimited)
         usage = get_daily_usage(conn)
-        if usage["total"] >= daily_budget:
+        if daily_budget > 0 and usage["total"] >= daily_budget:
             logger.info("Budget exhausted (%d/%d). Draining %d active tasks.",
                         usage["total"], daily_budget, len(active))
             break
@@ -1139,7 +1139,7 @@ async def run_continuous(
 async def main() -> None:
     parser = argparse.ArgumentParser(description="V2 paper analysis runner")
     parser.add_argument("-w", "--workers", type=int, default=3, help="Max concurrent workers")
-    parser.add_argument("-b", "--budget", type=int, default=1000, help="Daily request budget")
+    parser.add_argument("-b", "--budget", type=int, default=0, help="Daily request budget (0=unlimited)")
     parser.add_argument("-d", "--daemon", action="store_true", help="Run continuously until all work done / budget hit")
     parser.add_argument("-p", "--poll-interval", type=float, default=5.0, help="Seconds to sleep when no work available")
     parser.add_argument("--prep-only", action="store_true", help="Only run prep phase")
