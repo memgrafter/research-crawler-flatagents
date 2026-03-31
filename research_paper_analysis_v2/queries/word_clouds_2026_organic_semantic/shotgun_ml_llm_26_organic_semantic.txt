@@ -1,0 +1,254 @@
+# Word Cloud: Organic Semantic ML+LLM Terms
+# generated_by: generate_word_list_organic_semantic.py
+# candidate_papers: 28249
+# year_prefix: 26
+# ngram_range: 2-4
+# include_unigrams: False
+# semantic_enabled: True
+# semantic_anchors: 19
+# embedding_model: sentence-transformers/all-MiniLM-L6-v2
+# embedding_batch_size: 128
+
+f1 score
+3d foundation model
+3d scene
+3d foundation
+3d reconstruction
+3d gaussian
+3d point
+gemini 2.5
+3d model
+reasoning 3d
+3d environment
+3d object
+2.5 pro
+3d gaussian splatting
+top-1 accuracy
+accuracy f1
+3d spatial reasoning
+8b model
+2d 3d
+3d point cloud
+performance f1
+llama 3.1
+3d structure
+7b model
+3d spatial
+precision recall f1-score
+3d geometry
+3d semantic
+macro f1
+3d space
+3d geometric
+achieve f1
+3d structural
+3d shape
+gemini 2.5 pro
+3d modeling
+accurate 3d
+2d semantic
+3d representation
+unitree g1
+128k context
+8b-parameter model
+5-fold cross-validation
+3d generation
+recall f1
+t2i model
+text-to-image t2i model
+accuracy f1-score
+10-fold cross-validation
+qwen3 model
+learning 3d
+text-to-image t2i
+1d 2d
+qwen 2.5
+detection f1
+2.5 flash
+llama 3.1 8b
+complex 3d
+large-scale 3d
+3b model
+improve f1
+1b model
+recall f1-score
+claude sonnet 4.5
+3d asset
+accuracy precision recall f1-score
+3d object detection
+splatting 3dgs
+cifar-10 cifar-100
+generating 3d
+achieved f1
+mnist cifar-10
+existing 3d
+unitree g1 humanoid
+representation 3d
+3d coordinate
+precision recall f1
+f1 improvement
+accuracy gsm8k
+3d printing
+2d image
+3d brain
+sonnet 4.5
+accuracy f1 score
+3.1 8b
+3d perception
+g1 humanoid
+3d pose
+3d scene understanding
+continuou 3d
+6-dof pose
+3d human
+3d segmentation
+4b model
+detailed 3d
+gpt-5 claude
+3d vision
+6d pose
+32b model
+llm gpt-4o
+3d medical
+14b model
+end-to-end e2e
+3d convolutional
+complex 3d environment
+gaussian splatting 3dgs
+explicit 3d
+f1 while
+text-to-image t2i generation
+while 3d
+claude 3.5
+3d gaussian splatting 3dgs
+segmentation 3d
+3.1 pro
+dense 3d
+7b parameter
+3d detection
+text-to-image t2i diffusion model
+deepseek r1
+8b parameter
+cifar-10 dataset
+achieving f1
+interactive 3d
+high-quality 3d
+dynamic 3d
+claude 4.5
+experiment cifar-10
+3d visual
+generate 3d
+5x faster
+3d simulation
+diverse 3d
+fashion-mnist cifar-10
+three-dimensional 3d
+gemini 2.5 flash
+high-fidelity 3d
+llama 3.2
+efficient 3d
+both 2d
+gpt-5.2 claude
+t2i generation
+3d world
+gpt-4o claude
+up 4x
+3d surface
+robotwin 2.0
+qwen 2.5 7b
+opus 4.6
+gpt-2 model
+unitree g1 humanoid robot
+average f1
+weighted f1-score
+real-time 3d
+2.0 flash
+1b parameter
+achieve f1-score
+robust 3d
+llama 8b
+monocular 3d
+mistral 7b
+4b parameter
+2.5 7b
+6g network
+14b parameter
+3d data
+unicode x2013
+full 3d
+3d scene reconstruction
+opus 4.5
+3d scene representation
+g1 humanoid robot
+recall f1 score
+70b parameter
+relative l2
+p95 latency
+macro f1 score
+1.5 times
+3d u-net
+map 0.5
+3d medical image
+6d pose estimation
+haiku 4.5
+4b 8b
+achieve f1 score
+text-to-image t2i diffusion
+3d scene graph
+llama 3.3
+achieving f1 score
+2.5 times
+claude opus 4.5
+macro f1-score
+sixth-generation 6g
+3b parameter
+4.5 sonnet
+gpt-4o gemini
+gemini 2.0
+3d lidar
+1m token
+unitree go2
+32b parameter
+3d ct
+experiment gsm8k
+macro-f1 score
+unitree go1
+2d visual
+claude opus 4.6
+t2i diffusion model
+gpt-5 gemini
+3.5 sonnet
+gemini 1.5
+4-bit quantization
+gpt-5 gemini 2.5
+l2 error
+llama 3.3 70b
+experiment gpt-2
+gpt-4o mini
+only 0.5
+3d indoor
+micro-f1 score
+a100 gpu
+gpt-2 small
+128k token
+gsm8k math
+gemini 3.1 pro
+3.3 70b
+1.6 times
+gemini 3.1
+gemini 2.0 flash
+t2i diffusion
+claude 3.5 sonnet
+5g network
+nvidia h100
+claude 4.5 sonnet
+average f1-score
+claude sonnet 4.6
+2.0 license
+apache 2.0
+nvidia a100
+sonnet 4.6
+text-to-video t2v
+nvidia a100 gpu
+released apache 2.0
+apache 2.0 license

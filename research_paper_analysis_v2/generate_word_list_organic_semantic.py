@@ -16,8 +16,15 @@ from __future__ import annotations
 import argparse
 import csv
 import math
+import os
 import re
 import sqlite3
+
+# Cap MPS memory pool to 60% of unified RAM by default.
+# Without this, PyTorch's MPS allocator grabs all available system memory (~15GB on 16GB Macs)
+# even though the model only needs ~3-5GB. Set to "0.0" to uncap.
+os.environ.setdefault("PYTORCH_MPS_HIGH_WATERMARK_RATIO", "0.6")
+os.environ.setdefault("PYTORCH_MPS_LOW_WATERMARK_RATIO", "0.5")
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
