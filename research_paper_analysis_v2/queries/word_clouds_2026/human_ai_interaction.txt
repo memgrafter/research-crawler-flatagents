@@ -1,7 +1,6 @@
-# Word Cloud: Human Ai Interaction (2024 shotgun split)
-# source: 2024 shotgun candidates + existing theme seeds
+# Word Cloud: Human Ai Interaction (2026 organic semantic)
+# source: 2026 organic semantic word clouds
 
-interactive 3d
 Human Feedback
 Preference Learning
 Comparative Feedback

@@ -16,7 +16,6 @@ f1 score
 3d reconstruction
 3d gaussian
 3d point
-gemini 2.5
 3d model
 reasoning 3d
 3d environment
@@ -30,23 +29,19 @@ accuracy f1
 2d 3d
 3d point cloud
 performance f1
-llama 3.1
 3d structure
 7b model
 3d spatial
 precision recall f1-score
 3d geometry
-3d semantic
 macro f1
 3d space
 3d geometric
 achieve f1
 3d structural
 3d shape
-gemini 2.5 pro
 3d modeling
 accurate 3d
-2d semantic
 3d representation
 unitree g1
 128k context
@@ -55,24 +50,19 @@ unitree g1
 3d generation
 recall f1
 t2i model
-text-to-image t2i model
 accuracy f1-score
 10-fold cross-validation
 qwen3 model
 learning 3d
-text-to-image t2i
 1d 2d
-qwen 2.5
 detection f1
 2.5 flash
-llama 3.1 8b
 complex 3d
 large-scale 3d
 3b model
 improve f1
 1b model
 recall f1-score
-claude sonnet 4.5
 3d asset
 accuracy precision recall f1-score
 3d object detection
@@ -87,9 +77,7 @@ representation 3d
 3d coordinate
 precision recall f1
 f1 improvement
-accuracy gsm8k
 3d printing
-2d image
 3d brain
 sonnet 4.5
 accuracy f1 score
@@ -104,11 +92,9 @@ continuou 3d
 3d segmentation
 4b model
 detailed 3d
-gpt-5 claude
 3d vision
 6d pose
 32b model
-llm gpt-4o
 3d medical
 14b model
 end-to-end e2e
@@ -117,21 +103,17 @@ complex 3d environment
 gaussian splatting 3dgs
 explicit 3d
 f1 while
-text-to-image t2i generation
 while 3d
-claude 3.5
 3d gaussian splatting 3dgs
 segmentation 3d
 3.1 pro
 dense 3d
 7b parameter
 3d detection
-text-to-image t2i diffusion model
 deepseek r1
 8b parameter
 cifar-10 dataset
 achieving f1
-interactive 3d
 high-quality 3d
 dynamic 3d
 claude 4.5

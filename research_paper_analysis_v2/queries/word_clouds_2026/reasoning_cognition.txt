@@ -1,5 +1,5 @@
-# Word Cloud: Reasoning Cognition (2024 shotgun split)
-# source: 2024 shotgun candidates + existing theme seeds
+# Word Cloud: Reasoning Cognition (2026 organic semantic)
+# source: 2026 organic semantic word clouds
 
 Chain-of-Thought
 Tree of Thoughts

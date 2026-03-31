@@ -1,8 +1,6 @@
-# Word Cloud: Information Retrieval Knowledge (2024 shotgun split)
-# source: 2024 shotgun candidates + existing theme seeds
+# Word Cloud: Information Retrieval Knowledge (2026 organic semantic)
+# source: 2026 organic semantic word clouds
 
-3d semantic
-2d semantic
 Retrieval-Augmented Generation
 Dense Retrieval
 Sparse Retrieval

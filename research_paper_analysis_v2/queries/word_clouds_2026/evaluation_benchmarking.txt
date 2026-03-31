@@ -1,7 +1,6 @@
-# Word Cloud: Evaluation Benchmarking (2024 shotgun split)
-# source: 2024 shotgun candidates + existing theme seeds
+# Word Cloud: Evaluation Benchmarking (2026 organic semantic)
+# source: 2026 organic semantic word clouds
 
-accuracy gsm8k
 Benchmark
 MMLU
 GSM8K
