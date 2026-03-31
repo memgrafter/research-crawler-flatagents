@@ -1556,12 +1556,16 @@ class V2Hooks(LoggingHooks):
         sorted_tags = sorted(scores.items(), key=lambda kv: kv[1].get("weight", 0), reverse=True)
 
         # Filter: must appear in paper text (not just neighbors/taxonomy) and meet weight floor.
+        # Falls back to top unfiltered tags if filter is too aggressive.
         MIN_TAG_WEIGHT = 0.15
         qualified_tags = [
             (tag, meta) for tag, meta in sorted_tags
             if meta.get("weight", 0) >= MIN_TAG_WEIGHT
             and "paper_text" in (meta.get("sources") or [])
         ]
+        if not qualified_tags:
+            qualified_tags = [(tag, meta) for tag, meta in sorted_tags
+                              if "paper_text" in (meta.get("sources") or [])][:15]
 
         terminology_tags = [tag for tag, _ in qualified_tags[:15]]
         terminology_tag_meta = {tag: meta for tag, meta in qualified_tags[:15]}
