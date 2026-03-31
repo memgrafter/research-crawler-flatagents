@@ -1,0 +1,26 @@
+# Noise/artifact terms to exclude from 2026 word clouds.
+# These leaked through the splitter's regex matching on partial substrings.
+
+# Non-LLM domain noise
+interactive 3d
+3d semantic
+2d semantic
+2d image
+
+# Overly specific model version strings
+gemini 2.5
+gemini 2.5 pro
+llama 3.1
+llama 3.1 8b
+qwen 2.5
+claude sonnet 4.5
+claude 3.5
+gpt-5 claude
+llm gpt-4o
+
+# Composite fragments
+accuracy gsm8k
+text-to-image t2i model
+text-to-image t2i
+text-to-image t2i generation
+text-to-image t2i diffusion model

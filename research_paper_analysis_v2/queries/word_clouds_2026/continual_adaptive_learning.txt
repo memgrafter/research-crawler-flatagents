@@ -1,5 +1,5 @@
-# Word Cloud: Continual Adaptive Learning (2024 shotgun split)
-# source: 2024 shotgun candidates + existing theme seeds
+# Word Cloud: Continual Adaptive Learning (2026 organic semantic)
+# source: 2026 organic semantic word clouds
 
 Continual Learning
 Lifelong Learning

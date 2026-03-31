@@ -1,11 +1,6 @@
-# Word Cloud: Multimodal Cross Domain (2024 shotgun split)
-# source: 2024 shotgun candidates + existing theme seeds
+# Word Cloud: Multimodal Cross Domain (2026 organic semantic)
+# source: 2026 organic semantic word clouds
 
-text-to-image t2i model
-text-to-image t2i
-2d image
-text-to-image t2i generation
-text-to-image t2i diffusion model
 Vision-Language Model
 VQA
 Image Captioning

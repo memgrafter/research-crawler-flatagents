@@ -1,15 +1,6 @@
-# Word Cloud: Model Families Specific Implementations (2024 shotgun split)
-# source: 2024 shotgun candidates + existing theme seeds
+# Word Cloud: Model Families Specific Implementations (2026 organic semantic)
+# source: 2026 organic semantic word clouds
 
-gemini 2.5
-llama 3.1
-gemini 2.5 pro
-qwen 2.5
-llama 3.1 8b
-claude sonnet 4.5
-gpt-5 claude
-llm gpt-4o
-claude 3.5
 GPT
 BERT
 T5
