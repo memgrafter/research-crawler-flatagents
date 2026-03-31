@@ -1,0 +1,184 @@
+# Exclusions for 2026 organic LLM-focused term mining.
+# Carries forward 2023 exclusions + 2026-specific noise.
+
+# CV/vision/3D bleed
+3d
+2d
+1d
+point cloud
+mesh
+voxel
+multi-view
+multiview
+neural radiance field
+nerf
+object detection
+semantic segmentation
+image segmentation
+scene understanding
+pose estimation
+human pose
+depth estimation
+text-to-image
+text-to-3d
+image-to-image
+3d scene
+3d gaussian
+3d reconstruction
+3d gaussian splatting
+3d point
+3d point cloud
+3d object
+3d environment
+3d space
+3d model
+3d representation
+3d shape
+3d object detection
+gaussian splatting 3dgs
+splatting 3dgs
+2d 3d
+2d image
+
+# Medical/bio bleed
+medical image
+mri
+ct
+x-ray
+radiology
+eeg
+ecg
+covid-19
+patient
+clinical
+
+# Metric/leaderboard fragments
+cifar
+cifar-10 cifar-100
+imagenet
+mnist
+top-1
+top-5
+top-1 accuracy
+f1
+f1 score
+f1-score
+precision
+recall
+auc
+bleu
+rouge
+accuracy f1
+recall f1-score
+ranked 1st
+ranks 1st
+1st place
+2nd place
+3rd place
+
+# Reporting boilerplate
+10-fold cross-validation
+5-fold cross-validation
+cross-validation
+such
+including
+like
+e.g
+i.e
+etc
+performance
+accuracy
+
+# Model version strings — single-word entries match via \b so
+# "llama" catches "llama 3.2", "llama 3.3 70b", etc.
+llama
+gemini
+claude
+gpt-4o
+gpt-5
+gpt-5.2
+gpt-2
+mistral
+qwen
+
+# Awkward generation / comparison phrasing
+generated
+outperform
+experiment
+
+# Model variant names (sonnet/opus/haiku/flash/pro/deepseek)
+sonnet
+opus
+haiku
+flash
+pro
+deepseek
+qwen3
+
+# Generic numeric model shells / sizes
+1b
+3b
+4b
+7b
+8b
+13b
+14b
+32b
+70b
+parameter
+
+# Text-to-image/video fragments
+t2i
+t2v
+text-to-image
+text-to-video
+
+# Hardware / infra noise
+a100
+h100
+nvidia
+gpu
+
+# Numeric / measurement fragments
+times
+faster
+only
+up
+relative
+error
+map
+p95
+
+# License / versioning noise
+license
+apache
+unicode
+
+# Robotics noise
+unitree
+humanoid
+dof
+pose
+6d
+
+# Network / telecom
+5g
+6g
+
+# Misc non-LLM
+end-to-end e2e
+three-dimensional
+high-quality
+video generation
+benchmark 3d
+interactive 3d
+3d semantic
+2d semantic
+3d human
+3d structure
+3d data
+3d asset
+3d scene graph
+3d scene reconstruction
+mnist cifar-10
+robotwin

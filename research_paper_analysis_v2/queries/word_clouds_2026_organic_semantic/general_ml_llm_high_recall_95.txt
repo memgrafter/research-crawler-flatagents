@@ -1,0 +1,528 @@
+# Word Cloud: General ML/LLM High-Recall (~95% target coverage)
+# source: 2024 shotgun candidates + existing seeds + fixed anchors
+
+large language model
+language model
+llm
+foundation model
+transformer
+self attention
+multi-head attention
+attention mechanism
+encoder-decoder
+decoder-only
+mixture of experts
+moe
+tokenization
+context window
+long context
+pretraining
+fine-tuning
+instruction tuning
+supervised fine-tuning
+rlhf
+dpo
+ppo
+reward model
+alignment
+ai safety
+jailbreak
+hallucination
+factuality
+reasoning
+chain of thought
+agent
+agentic
+tool use
+function calling
+retrieval augmented generation
+rag
+retrieval
+reranking
+vector database
+embedding model
+knowledge graph
+semantic search
+benchmark
+evaluation
+mmlu
+gsm8k
+truthfulqa
+multimodal
+vision-language
+diffusion
+quantization
+distillation
+pruning
+inference optimization
+latency
+throughput
+scaling law
+continual learning
+domain adaptation
+interpretability
+mechanistic interpretability
+attribution
+human-ai interaction
+prompt engineering
+synthetic data
+self-supervised learning
+contrastive learning
+f1 score
+3d scene
+3d gaussian
+3d gaussian splatting
+3d reconstruction
+3d point
+text-to-image t2i
+gaussian splatting 3dgs
+3d gaussian splatting 3dgs
+3d point cloud
+llama 3.1
+splatting 3dgs
+7b model
+cifar-10 cifar-100
+3d object
+gemini 2.5
+3d environment
+3d object detection
+text-to-image t2i model
+7b parameter
+t2i model
+2d 3d
+gemini 2.5 pro
+3d model
+2d image
+6d pose
+recall f1-score
+gpt-2 small
+a100 gpu
+text-to-video t2v
+3d scene graph
+t2i generation
+experiment cifar-10
+end-to-end e2e
+3d space
+4-bit quantization
+mnist cifar-10
+top-1 accuracy
+nvidia a100 gpu
+recall f1 score
+text-to-image t2i diffusion model
+accuracy f1-score
+text-to-image t2i generation
+3d human
+cifar-10 dataset
+6g network
+3d data
+claude 3.5
+3d shape
+accuracy f1 score
+accuracy f1
+mistral 7b
+t2i diffusion model
+llama 3.3
+llama 3.1 8b
+recall f1
+3d representation
+nvidia a100
+gsm8k math
+3d scene reconstruction
+2.5 times
+3d structure
+gpt-2 model
+8b model
+1.5 times
+text-to-image t2i diffusion
+gpt-4o claude
+llama 3.2
+three-dimensional 3d
+gpt-4o gemini
+precision recall f1
+t2i diffusion
+llm gpt-4o
+up 4x
+sixth-generation 6g
+representation 3d
+3d asset
+70b parameter
+5g network
+high-quality 3d
+precision recall f1-score
+unitree g1
+apache 2.0
+unicode x2013
+gemini 1.5
+6d pose estimation
+3d detection
+6-dof pose
+3.1 8b
+3d spatial
+released apache 2.0
+gemini 3.1 pro
+3d scene representation
+qwen 2.5
+high-fidelity 3d
+4b 8b
+8b parameter
+llama 3.3 70b
+2.5 pro
+3d printing
+achieve f1 score
+3d structural
+claude 4.5
+nvidia h100
+experiment gsm8k
+3d scene understanding
+while 3d
+achieve f1-score
+1.6 times
+accuracy precision recall f1-score
+3d modeling
+achieving f1 score
+2.5 7b
+gpt-4o mini
+fashion-mnist cifar-10
+14b parameter
+3b model
+3.3 70b
+3d medical image
+g1 humanoid robot
+3d foundation model
+only 0.5
+3d visual
+3d perception
+f1 while
+gemini 2.0
+average f1-score
+map 0.5
+accuracy gsm8k
+1d 2d
+1m token
+2d visual
+5-fold cross-validation
+unitree go1
+qwen 2.5 7b
+3d semantic
+experiment gpt-2
+3d vision
+complex 3d environment
+claude opus 4.5
+5x faster
+3d geometric
+3b parameter
+gpt-5.2 claude
+gpt-5 claude
+achieve f1
+10-fold cross-validation
+3d geometry
+both 2d
+1b parameter
+gpt-5 gemini
+3d spatial reasoning
+weighted f1-score
+gemini 3.1
+3d world
+existing 3d
+claude 3.5 sonnet
+3d generation
+dynamic 3d
+unitree g1 humanoid robot
+3d coordinate
+macro f1-score
+macro f1 score
+2d semantic
+gpt-5 gemini 2.5
+gemini 2.5 flash
+dense 3d
+8b-parameter model
+3d foundation
+generating 3d
+learning 3d
+3.1 pro
+explicit 3d
+llama 8b
+apache 2.0 license
+complex 3d
+3d medical
+g1 humanoid
+l2 error
+claude opus 4.6
+generate 3d
+4b model
+qwen3 model
+3d segmentation
+2.5 flash
+unitree g1 humanoid
+3d surface
+1b model
+3d simulation
+accurate 3d
+detailed 3d
+3d indoor
+diverse 3d
+interactive 3d
+macro-f1 score
+3d pose
+micro-f1 score
+14b model
+real-time 3d
+achieving f1
+3d convolutional
+reasoning 3d
+32b parameter
+full 3d
+4b parameter
+achieved f1
+efficient 3d
+claude sonnet 4.5
+2.0 flash
+segmentation 3d
+continuou 3d
+p95 latency
+32b model
+3d lidar
+gemini 2.0 flash
+performance f1
+large-scale 3d
+3d ct
+128k token
+average f1
+2.0 license
+monocular 3d
+3d brain
+relative l2
+f1 improvement
+macro f1
+unitree go2
+robotwin 2.0
+detection f1
+improve f1
+3d u-net
+opus 4.6
+robust 3d
+claude 4.5 sonnet
+opus 4.5
+3.5 sonnet
+128k context
+claude sonnet 4.6
+deepseek r1
+sonnet 4.5
+4.5 sonnet
+sonnet 4.6
+haiku 4.5
+Self-Attention
+Feed-Forward Network
+LayerNorm
+Residual Connections
+Positional Encoding
+Embedding Layer
+Softmax
+Token Prediction
+Autoregressive
+Masked Language Modeling
+Causal Attention
+Bidirectional
+Flash Attention
+Sparse Attention
+Block Sparse Attention
+GPT
+BERT
+T5
+LLaMA
+Mistral
+Mixtral
+Claude
+PaLM
+Gemini
+Phi
+Qwen
+Falcon
+MPT
+OLMo
+Sparse MoE
+Dense Transformer
+Encoder-Only
+Vision Transformer (ViT)
+CLIP
+Diffusion Transformer
+Backpropagation
+Gradient Descent
+Adam Optimizer
+Learning Rate Schedule
+Warmup
+Weight Decay
+Dropout
+Batch Normalization
+Pre-training
+Reward Modeling
+Policy Gradient
+Actor-Critic
+Supervised Fine-Tuning (SFT)
+Curriculum Learning
+Chain-of-Thought
+Tree of Thoughts
+Self-Consistency
+Reasoning Traces
+Multi-Step Reasoning
+Mathematical Reasoning
+Logical Reasoning
+Commonsense Reasoning
+Causal Reasoning
+Analogical Reasoning
+Metacognition
+Reflection
+Self-Critique
+Deliberation
+Planning
+Decomposition
+Retrieval-Augmented Generation
+Dense Retrieval
+Sparse Retrieval
+Knowledge Base
+Embedding Similarity
+Query Expansion
+Document Chunking
+Hybrid Search
+BM25
+Contriever
+ColBERT
+Adversarial Attack
+Adversarial Defense
+Adversarial Training
+FGSM
+PGD
+C&W Attack
+Certified Robustness
+Randomized Smoothing
+Evasion Attack
+Poisoning Attack
+Backdoor Attack
+Data Poisoning
+Jailbreaking
+Red Teaming
+AI Alignment
+Constitutional AI
+Safety Cases
+Guardrails
+Content Filtering
+Refusal Training
+HumanEval
+HellaSwag
+WinoGrande
+ARC
+BIG-Bench
+GLUE
+SuperGLUE
+MT-Bench
+AlpacaEval
+LMSys Arena
+Perplexity
+BLEU
+ROUGE
+Accuracy
+Calibration
+QAT
+PTQ
+INT8
+INT4
+FP16
+BF16
+Mixed Precision
+LoRA
+QLoRA
+Adapters
+Prefix Tuning
+Prompt Tuning
+Parameter-Efficient Fine-Tuning
+Knowledge Distillation
+Model Pruning
+Speculative Decoding
+KV Cache
+Gradient Checkpointing
+Pipeline Parallelism
+Tensor Parallelism
+Data Parallelism
+Vision-Language Model
+VQA
+Image Captioning
+Visual Grounding
+OCR
+Document Understanding
+Speech Recognition
+Text-to-Speech
+Audio-Language
+Video Understanding
+Multimodal Fusion
+Cross-Modal Attention
+LLaVA
+GPT-4V
+Gemini Pro Vision
+Serving Infrastructure
+Model Serving
+Batch Inference
+Real-Time Inference
+Edge Deployment
+Mobile AI
+Quantized Inference
+TensorRT
+ONNX
+vLLM
+TGI
+Model Compression
+On-Device AI
+Lifelong Learning
+Catastrophic Forgetting
+Experience Replay
+Elastic Weight Consolidation
+Progressive Nets
+Test-Time Adaptation
+Domain Shift
+Distribution Shift
+Online Learning
+Incremental Learning
+Task-Incremental
+Class-Incremental
+Explainable AI
+Feature Attribution
+Attention Visualization
+Saliency Maps
+Integrated Gradients
+SHAP
+LIME
+Concept Activation
+Probing
+Circuit Analysis
+Superposition
+Sparse Autoencoders
+Representation Analysis
+Activation Patching
+Human Feedback
+Preference Learning
+Comparative Feedback
+Scalar Feedback
+Reward Hacking
+Specification Gaming
+Sycophancy
+Helpfulness
+Harmlessness
+Honesty
+User Intent
+Instruction Following
+Conversational AI
+Dialogue Systems
+Interactive Learning
+Pre-training Data
+Instruction Data
+Preference Data
+Data Augmentation
+Data Curation
+Data Filtering
+Deduplication
+Data Contamination
+Multi-Task Learning
+Transfer Learning
+Cross-Lingual Transfer
+Few-Shot Learning
+Zero-Shot Learning
+In-Context Learning

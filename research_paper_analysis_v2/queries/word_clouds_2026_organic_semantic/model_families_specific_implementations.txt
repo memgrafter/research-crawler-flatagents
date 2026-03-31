@@ -1,0 +1,62 @@
+# Word Cloud: Model Families Specific Implementations (2024 shotgun split)
+# source: 2024 shotgun candidates + existing theme seeds
+
+llama 3.1
+gemini 2.5
+gemini 2.5 pro
+gpt-2 small
+claude 3.5
+mistral 7b
+llama 3.3
+llama 3.1 8b
+gpt-2 model
+gpt-4o claude
+llama 3.2
+gpt-4o gemini
+llm gpt-4o
+gemini 1.5
+gemini 3.1 pro
+qwen 2.5
+llama 3.3 70b
+claude 4.5
+gpt-4o mini
+gemini 2.0
+qwen 2.5 7b
+experiment gpt-2
+claude opus 4.5
+gpt-5.2 claude
+gpt-5 claude
+gpt-5 gemini
+gemini 3.1
+claude 3.5 sonnet
+gpt-5 gemini 2.5
+gemini 2.5 flash
+llama 8b
+claude opus 4.6
+claude sonnet 4.5
+gemini 2.0 flash
+claude 4.5 sonnet
+claude sonnet 4.6
+GPT
+BERT
+T5
+LLaMA
+Mistral
+Mixtral
+Claude
+PaLM
+Gemini
+Phi
+Qwen
+Falcon
+MPT
+OLMo
+Mixture of Experts
+Sparse MoE
+Dense Transformer
+Encoder-Only
+Decoder-Only
+Encoder-Decoder
+Vision Transformer (ViT)
+CLIP
+Diffusion Transformer
