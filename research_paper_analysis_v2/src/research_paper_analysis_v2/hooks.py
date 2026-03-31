@@ -1642,11 +1642,24 @@ class V2Hooks(LoggingHooks):
         key_outcome = self._norm(context.get("key_outcome"))
         core_contribution = " ".join(self._sentences_from_markdown(key_outcome, max_sentences=2))
 
+        # Resolve model name from profiles for provenance tracking
+        model_used = ""
+        profiles = context.get("_profiles") or {}
+        if isinstance(profiles, dict):
+            profile_data = profiles.get("data") or profiles
+            profile_name = profile_data.get("default") or ""
+            profile_map = profile_data.get("model_profiles") or {}
+            if isinstance(profile_map, dict) and profile_name in profile_map:
+                profile = profile_map.get(profile_name) or {}
+                if isinstance(profile, dict):
+                    model_used = profile.get("name", "")
+
         frontmatter = {
             "ver": "rpa2",
             "title": self._norm(context.get("title")),
             "arxiv_id": self._norm(context.get("arxiv_id")),
             "source_url": self._norm(context.get("source_url")),
+            "model": model_used,
             "tags": context.get("terminology_tags") or [],
             "core_contribution": core_contribution,
         }
