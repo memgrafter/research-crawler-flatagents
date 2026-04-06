@@ -100,6 +100,7 @@ _CONTEXT_OVERFLOW_HEURISTIC_TOKENS = int(
 _RATE_LIMIT_GATES: Dict[str, asyncio.Event] = {}
 _RATE_LIMIT_UNTIL_TS: Dict[str, float] = {}
 _RATE_LIMIT_COOLDOWN = float(os.environ.get("RPA_V2_429_COOLDOWN_SECS", "1"))
+_MAX_QUALITY_RETRIES = int(os.environ.get("RPA_V2_MAX_QUALITY_RETRIES", "2"))
 _RATE_LIMIT_MIN_COOLDOWN_SECS = float(os.environ.get("RPA_V2_429_MIN_COOLDOWN_SECS", "12"))
 _RATE_LIMIT_RESET_JITTER_SECS = float(os.environ.get("RPA_V2_429_RESET_JITTER_SECS", "0.35"))
 
@@ -196,6 +197,8 @@ def _is_transient(error: str) -> bool:
     if any(p in text for p in _TRANSIENT_PATTERNS):
         return True
     if _contains_http_status_code(text, 503):
+        return True
+    if _contains_http_status_code(text, 402):
         return True
     return False
 
@@ -478,7 +481,7 @@ GCS_PDF_PREFIX = "gs://arxiv-dataset/arxiv/pdf"
 # Fixed retry schedule (no env tuning).
 # Example with retries: DOWNLOAD_RETRY_DELAYS_SECS = [0.75, 1.5, 3.0]
 # Empty list means no retries (single attempt only).
-DOWNLOAD_RETRY_DELAYS_SECS: List[float] = []
+DOWNLOAD_RETRY_DELAYS_SECS: List[float] = [2, 8, 25, 31]
 
 # LLM aiohttp pool (litellm reads these at import time — set in run.sh)
 # AIOHTTP_CONNECTOR_LIMIT        — total TCP connections (default 300)
@@ -1101,6 +1104,10 @@ class V2Hooks(LoggingHooks):
         if permanent_pdf_404:
             error_str = _normalize_pdf_not_found_error(error_str)
 
+        permanent_451 = _contains_http_status_code(error_str.lower(), 451)
+        if permanent_451:
+            error_str = f"http_451_unavailable_for_legal_reasons: {error_str[:900]}"
+
         # Ensure machine final output contains a concrete error string.
         context["last_error"] = error_str
         if error_type:
@@ -1111,7 +1118,7 @@ class V2Hooks(LoggingHooks):
         if execution_id:
             # Transient HTTP errors → reset to phase for re-pickup.
             # Explicit exception: download_pdf HTTP 404 is permanent for this run.
-            if (not permanent_pdf_404) and (force_transient or _is_transient(error_str)):
+            if (not permanent_pdf_404) and (not permanent_451) and (force_transient or _is_transient(error_str)):
                 # Fire per-model 429 gate if rate-limited
                 if _is_rate_limit(error_str):
                     model = _resolve_rate_limit_model(context, error_str)
@@ -1183,6 +1190,30 @@ class V2Hooks(LoggingHooks):
             # Permanent error → mark failed
             async with _get_v2_write_lock():
                 conn = self._v2_db()
+
+                # Quality-gate failure → discard machine, fresh retry
+                judge = str(context.get("judge_decision") or "").upper()
+                repair_attempted = bool(context.get("repair_attempted"))
+                if judge in ("FAIL", "REPAIR") and repair_attempted:
+                    prior = conn.execute(
+                        "SELECT COUNT(*) FROM machine_checkpoints WHERE execution_id = ? AND event = 'machine_end'",
+                        (execution_id,),
+                    ).fetchone()[0]
+                    if prior < _MAX_QUALITY_RETRIES:
+                        conn.execute("DELETE FROM machine_latest WHERE execution_id = ?", (execution_id,))
+                        conn.execute(
+                            """UPDATE executions
+                               SET status = 'pending', error = NULL,
+                                   prep_output = NULL, expensive_output = NULL,
+                                   updated_at = ?
+                               WHERE execution_id = ?""",
+                            (_utc_now_iso(), execution_id),
+                        )
+                        conn.commit()
+                        logger.info("Quality-gate retry %d/%d for %s: reset to pending",
+                                    prior + 1, _MAX_QUALITY_RETRIES, execution_id)
+                        return context
+
                 conn.execute(
                     """
                     UPDATE executions

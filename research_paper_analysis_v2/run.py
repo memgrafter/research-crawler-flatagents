@@ -755,14 +755,54 @@ def _load_latest_wrap_context(conn: sqlite3.Connection, execution_id: str) -> Di
     }
 
 
+_RETRIABLE_STATUS_CODES = {429, 402}
+
+
+def _is_retriable_error(error: str) -> bool:
+    """Return True if this error should auto-retry rather than permanently fail."""
+    text = error.lower()
+    for code in _RETRIABLE_STATUS_CODES:
+        if f"status={code}" in text or f"status_code={code}" in text or f" {code} " in text or f"({code})" in text or text.startswith(str(code)):
+            return True
+    return False
+
+
+def _rollback_status(execution_id: str) -> str:
+    """Determine the right retry status based on what phase the execution reached."""
+    conn = get_v2_db()
+    row = conn.execute(
+        "SELECT prep_output IS NOT NULL, expensive_output IS NOT NULL FROM executions WHERE execution_id = ?",
+        (execution_id,),
+    ).fetchone()
+    if not row:
+        return "pending"
+    has_prep, has_expensive = row
+    if has_expensive:
+        return "analyzed"
+    if has_prep:
+        return "prepped"
+    return "pending"
+
+
 def _mark_failed_in_db(execution_id: str, error: str) -> None:
-    """Mark an execution as failed directly (for exception paths)."""
+    """Mark an execution as failed, or auto-retry if the error is transient (429/402)."""
     try:
         conn = get_v2_db()
-        conn.execute(
-            "UPDATE executions SET status = 'failed', error = ?, updated_at = ? WHERE execution_id = ?",
-            (error, datetime.now(timezone.utc).isoformat(), execution_id),
-        )
+        if _is_retriable_error(error):
+            retry_status = _rollback_status(execution_id)
+            logger.warning(
+                "Auto-retrying %s (%s → %s): %s",
+                execution_id, "failed", retry_status, error[:120],
+            )
+            conn.execute(
+                "UPDATE executions SET status = ?, error = NULL, updated_at = ? WHERE execution_id = ?",
+                (retry_status, datetime.now(timezone.utc).isoformat(), execution_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE executions SET status = 'failed', error = ?, updated_at = ? WHERE execution_id = ?",
+                (error, datetime.now(timezone.utc).isoformat(), execution_id),
+            )
         conn.commit()
     except Exception as mark_exc:
         logger.exception(

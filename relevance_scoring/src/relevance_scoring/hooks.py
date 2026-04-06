@@ -91,7 +91,7 @@ class ScoringHooks(MachineHooks):
         context["normalize"] = bool(embedding_cfg.get("normalize", True))
         context["query_prompt"] = embedding_cfg.get("query_prompt")
         context["batch_size"] = int(
-            context.get("batch_size") or embedding_cfg.get("batch_size") or 64
+            context.get("batch_size") or embedding_cfg.get("batch_size") or 16
         )
         return context
 
@@ -151,7 +151,7 @@ class ScoringHooks(MachineHooks):
         trust_remote_code = bool(context.get("trust_remote_code"))
         model_kwargs = context.get("model_kwargs") or None
         config_kwargs = context.get("config_kwargs") or None
-        batch_size = int(context.get("batch_size") or 64)
+        batch_size = int(context.get("batch_size") or 16)
         normalize = bool(context.get("normalize"))
         query_prompt = context.get("query_prompt")
 
