@@ -35,6 +35,15 @@
 - [ ] Backoff tuning
   - Re-evaluate current retry backoffs for OpenRouter behavior.
 
+## Censorship / Model Fallback
+
+- [ ] Add fallback profile for HTTP 451 (Unavailable For Legal Reasons) papers
+  - StepFun (Chinese provider) returns HTTP 451 on medical, clinical, financial, and safety-related content.
+  - ~5-10% of papers in these topics will never pass StepFun's content filter.
+  - Implement a fallback model profile (e.g. Trinity Large) that kicks in after a 451.
+  - Could be per-execution: on 451, tag execution with `needs_fallback`, re-queue with alternate profile.
+  - See `data/censorship_blocked_papers.md` for examples.
+
 ## Quality
 
 - [ ] Validate report quality at scale

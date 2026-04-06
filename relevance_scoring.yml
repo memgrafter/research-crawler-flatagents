@@ -14,7 +14,7 @@ embedding:
     use_memory_efficient_attention: false
     unpad_inputs: false
   normalize: true
-  batch_size: 64
+  batch_size: 16
   # For Stella models, use prompts for better performance:
   query_prompt: "Instruct: Given a web search query, retrieve relevant passages that answer the query.\nQuery: "
   
