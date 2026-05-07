@@ -1,77 +1,25 @@
 # Research Paper Analysis V2 Config
 
-This folder contains the v2 FlatMachine/FlatAgent config skeleton.
+Strict FlatMachines/FlatAgents v4 config layout.
+
+## Layout
+
+- `profiles.yml`: `spec: flatprofile`, `spec_version: 4.1.0`; OpenAI Codex OAuth profiles for `gpt-5.4-mini`.
+- `prompts/*.prompt.yml`: prompt-only files (`spec: prompt`, `spec_version: 4.1.0`) containing former FlatAgent `system` and `user` templates.
+- `agents/*.flatagent.yml`: reusable FlatAgent wrappers (`spec: flatagent`, `spec_version: 4.1.0`) pointing at prompt files and profile names.
+- `*_machine.yml`: FlatMachine configs (`spec_version: 4.1.0`) with v4 flatagent file references and named hook references.
+
+## Hooks
+
+The old `data.hooks: {module, class}` block was removed. Machines now use named hook references:
+
+- `data.lifecycle_hooks: v2-hooks`
+- `states.<state>.hooks: v2-hooks`
+
+The Python runner must register `v2-hooks` to `research_paper_analysis_v2.hooks.V2Hooks` in the FlatMachines `HooksRegistry` before execution.
 
 ## Notes
-- Specs are aligned to the current FlatAgents/FlatMachines references:
-  - `spec: flatagent`
-  - `spec: flatmachine`
-  - `spec: flatprofiles`
-  - `spec_version: "1.0.0"`
-- Prototype models are both OpenRouter (configured with LiteLLM ids):
-  - `openrouter/openai/gpt-oss-120b:free`
-  - `openrouter/openrouter/pony-alpha` (double-prefix required with current LiteLLM/OpenRouter handling)
-- Temperature is intentionally left at **1.0** for all profiles during testing.
-- Agent outputs are plain text (`output.content`) for this prototype; no structured JSON schemas are used.
 
-## Hook actions used by machine.yml
-`machine.yml` uses these custom actions from `research_paper_analysis_v2.hooks.V2Hooks`:
-
-1. `collect_corpus_signals`
-   - Inputs: `context.arxiv_id`, `context.title`, `context.abstract`
-   - Outputs:
-     - `corpus_signals`
-     - `corpus_neighbors`
-     - `neighbors_considered`
-     - `neighbors_used`
-
-2. `derive_terminology_tags`
-   - Inputs: paper text + corpus neighbors
-   - Outputs:
-     - `terminology_tags` (list[str])
-     - `domain_tags` (list[str])
-     - `terminology_tag_meta` (object/map)
-
-3. `prepend_frontmatter_v2`
-   - Inputs: report body + metadata + tags
-   - Outputs:
-     - `frontmatter`
-     - `formatted_report`
-
-4. `normalize_judge_decision`
-   - Inputs: `context.judge_decision_raw`
-   - Outputs:
-     - `judge_decision` (`PASS` | `REPAIR` | `FAIL`)
-
-5. `set_repair_attempted`
-   - Outputs:
-     - `repair_attempted: true`
-
-## Worker/launcher integration (old DB + queue)
-
-For prototyping, v2 includes a simple single-worker path that reuses the existing
-`paper_queue` schema from `arxiv_crawler`, but uses **v2-native hooks**.
-
-- `paper_analysis_worker.yml`
-  - uses hook module `research_paper_analysis_v2.distributed_hooks.DistributedPaperAnalysisHooks`
-  - claims from existing `paper_queue`, prepares paper, runs `./machine.yml`, writes report
-  - no dependency on v1 runtime modules
-- `single_worker_launcher.yml`
-  - launches exactly one `paper_analysis_worker.yml` and exits
-
-This keeps scheduling minimal in-repo: a lean batch scheduler pass (`batch_scheduler.yml`) that only checks pool state and spawns workers.
-
-## Files
-- `profiles.yml`: model profiles
-- `machine.yml`: v2 orchestration
-- `paper_analysis_worker.yml`: one worker against old queue/db
-- `single_worker_launcher.yml`: fire-and-forget one worker
-- `batch_scheduler.yml`: one scheduler pass (pool check + spawn)
-- `key_outcome_writer.yml`: key outcome section
-- `why_hypothesis_writer.yml`: why-it-matters hypothesis ledger
-- `reproduction_writer.yml`: reproduction notes
-- `limits_confidence_writer.yml`: limits/confidence/next checks
-- `report_assembler.yml`: markdown body assembly
-- `completeness_judge.yml`: shared completeness-only judge
-- `targeted_repair.yml`: single repair pass
-- `terminology_map.yml`: starter canonicalization map
+- Temperature parameters were removed from all profile files.
+- The old inline FlatAgent files (`*_writer.yml`, `report_assembler.yml`, `completeness_judge.yml`, `targeted_repair.yml`) were replaced by `prompts/` + `agents/`.
+- `profiles_stepfun_test.yml` remains as a non-runtime reference profile and was normalized to `flatprofile` v4 shape with temperatures removed.

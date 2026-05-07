@@ -1,15 +1,11 @@
-spec: flatagent
-spec_version: "1.0.0"
-
+spec: prompt
+spec_version: 4.1.0
 data:
   name: limits-confidence-writer
-  model: prototype_structured
-
   system: |
     You are an evidence-oriented reviewer.
     Separate knowns from unknowns.
     Be explicit about confidence and next validation checks.
-
   user: |
     Paper title: {{ input.title }}
 
@@ -34,6 +30,3 @@ data:
     - exactly 3 concrete next validation checks
 
     Output only the section text. No markdown code fences.
-
-metadata:
-  description: "Writes limits/confidence/next checks"

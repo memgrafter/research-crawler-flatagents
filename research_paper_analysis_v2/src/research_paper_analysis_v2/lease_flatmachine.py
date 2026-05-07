@@ -27,6 +27,7 @@ class LeaseFlatMachine(FlatMachine):
             lock=self.lock,
             result_backend=self.result_backend,
             agent_registry=self.agent_registry,
+            hooks_registry=self.hooks_registry,
             _config_dir=peer_config_dir,
             _execution_id=child_id,
             _parent_execution_id=self.execution_id,

@@ -128,9 +128,17 @@ def _normalize_model_key(model: Optional[str]) -> str:
     raw = str(model).strip()
     lowered = raw.lower()
 
-    if "trinity-large-preview" in lowered or "prototype_structured" in lowered:
+    if (
+        "trinity-large-preview" in lowered
+        or lowered == "structured"
+        or lowered.endswith("/structured")
+    ):
         return _CHEAP_MODEL_KEY
-    if "pony-alpha" in lowered or "prototype_reasoning" in lowered:
+    if (
+        "pony-alpha" in lowered
+        or lowered == "reasoning"
+        or lowered.endswith("/reasoning")
+    ):
         return _CHEAP_MODEL_KEY if _SINGLE_MODEL_GATE else _EXPENSIVE_MODEL_KEY
 
     return _CHEAP_MODEL_KEY if (_SINGLE_MODEL_GATE and raw == _EXPENSIVE_MODEL_KEY) else raw
@@ -723,7 +731,7 @@ class V2Hooks(LoggingHooks):
     # Action router
     # -------------------------------------------------------------------------
 
-    async def on_action(self, action_name: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    async def on_action(self, state_name: str, action_name: str, context: Dict[str, Any]) -> Dict[str, Any]:
         handlers = {
             # Prep actions
             "download_pdf": self._download_pdf,
@@ -745,7 +753,7 @@ class V2Hooks(LoggingHooks):
         handler = handlers.get(action_name)
         if handler:
             return await handler(context)
-        return await super().on_action(action_name, context)
+        return await super().on_action(state_name, action_name, context)
 
     # -------------------------------------------------------------------------
     # Prep actions: download_pdf, extract_text
@@ -1693,7 +1701,7 @@ class V2Hooks(LoggingHooks):
                 inner = pdata.get("data") or pdata
                 profile_map = inner.get("model_profiles") or {}
                 seen = []
-                for pname in ("prototype_structured", "prototype_reasoning"):
+                for pname in ("structured", "reasoning"):
                     p = (profile_map.get(pname) or {})
                     name = p.get("name", "") if isinstance(p, dict) else ""
                     if name and name not in seen:

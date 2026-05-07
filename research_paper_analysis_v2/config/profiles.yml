@@ -1,19 +1,21 @@
-spec: flatprofiles
-spec_version: "1.0.0"
-
+spec: flatprofile
+spec_version: 4.1.0
 data:
   model_profiles:
-    # Use fully-qualified LiteLLM model ids to avoid provider/name assembly ambiguity.
-    prototype_structured:
-      # Prep/cheap phases — Trinity has 20 RPM, good enough for high-volume work
-      name: openrouter/stepfun/step-3.5-flash:free
-      #name: openrouter/arcee-ai/trinity-large-preview:free
-      temperature: 1.0
-
-    prototype_reasoning:
-      # Expensive phases (why, open_questions, reproduction, limits) — Step wins +3.2 avg
-      name: openrouter/stepfun/step-3.5-flash:free
-      #name: openrouter/arcee-ai/trinity-large-preview:free
-      temperature: 1.0
-
-  default: prototype_structured
+    structured:
+      provider: openai-codex
+      backend: codex
+      name: gpt-5.4-mini
+      oauth:
+        provider: openai-codex
+        auth_file: ~/.agents/flatmachines/auth.json
+        originator: flatmachines
+    reasoning:
+      provider: openai-codex
+      backend: codex
+      name: gpt-5.4-mini
+      oauth:
+        provider: openai-codex
+        auth_file: ~/.agents/flatmachines/auth.json
+        originator: flatmachines
+  default: structured

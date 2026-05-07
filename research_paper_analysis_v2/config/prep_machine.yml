@@ -1,34 +1,20 @@
 spec: flatmachine
-spec_version: "1.0.0"
-
+spec_version: 4.1.0
 data:
   name: prep-pipeline
-  profiles: ./profiles.yml
-
   persistence:
     enabled: true
     backend: local
-
-  hooks:
-    module: "research_paper_analysis_v2.hooks"
-    class: "V2Hooks"
-
   settings:
     max_steps: 15
-
   context:
-    # Passed in by runner
     arxiv_id: input.arxiv_id
     paper_id: input.paper_id
     execution_id: input.execution_id
     title: input.title
     authors: input.authors
     abstract: input.abstract
-
-    # Token target for key_outcome (cheap)
-    token_target_key_outcome: "120-180"
-
-    # Populated by actions
+    token_target_key_outcome: 120-180
     paper_text: null
     reference_count: 0
     corpus_signals: null
@@ -36,33 +22,31 @@ data:
     neighbors_considered: 0
     neighbors_used: 0
     key_outcome: null
-
   agents:
-    key_outcome_writer: ./key_outcome_writer.yml
-
+    key_outcome_writer: ./agents/key_outcome_writer.flatagent.yml
   states:
     start:
       type: initial
       transitions:
-        - to: download_pdf
-
+      - to: download_pdf
+      hooks: v2-hooks
     download_pdf:
       action: download_pdf
       on_error: prep_failed
       transitions:
-        - to: extract_text
-
+      - to: extract_text
+      hooks: v2-hooks
     extract_text:
       action: extract_text
       on_error: prep_failed
       transitions:
-        - to: collect_corpus_signals
-
+      - to: collect_corpus_signals
+      hooks: v2-hooks
     collect_corpus_signals:
       action: collect_corpus_signals
       transitions:
-        - to: write_key_outcome
-
+      - to: write_key_outcome
+      hooks: v2-hooks
     write_key_outcome:
       agent: key_outcome_writer
       execution:
@@ -77,13 +61,13 @@ data:
         key_outcome: output.content
       on_error: prep_failed
       transitions:
-        - to: save_prep_result
-
+      - to: save_prep_result
+      hooks: v2-hooks
     save_prep_result:
       action: save_prep_result
       transitions:
-        - to: done
-
+      - to: done
+      hooks: v2-hooks
     done:
       type: final
       output:
@@ -94,19 +78,20 @@ data:
         reference_count: context.reference_count
         corpus_signals: context.corpus_signals
         corpus_neighbors: context.corpus_neighbors
-
     prep_failed:
       action: mark_execution_failed
       transitions:
-        - to: failed
-
+      - to: failed
+      hooks: v2-hooks
     failed:
       type: final
       output:
         error: context.last_error
         arxiv_id: context.arxiv_id
         execution_id: context.execution_id
-
+  lifecycle_hooks: v2-hooks
 metadata:
-  description: "Prep pipeline: download PDF, extract text, corpus signals, key outcome"
-  tags: ["prep", "cheap-model"]
+  description: 'Prep pipeline: download PDF, extract text, corpus signals, key outcome'
+  tags:
+  - prep
+  - cheap-model

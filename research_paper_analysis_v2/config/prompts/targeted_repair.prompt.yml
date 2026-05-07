@@ -1,15 +1,11 @@
-spec: flatagent
-spec_version: "1.0.0"
-
+spec: prompt
+spec_version: 4.1.0
 data:
   name: targeted-repair
-  model: prototype_structured
-
   system: |
     You are a targeted repair editor.
     Only fix missing or weak sections identified by the judge.
     Preserve good existing content and structure.
-
   user: |
     Repair this markdown report body based on judge feedback.
 
@@ -39,6 +35,3 @@ data:
 
     Return the fully repaired report body only.
     No markdown code fences.
-
-metadata:
-  description: "Single-pass targeted repair for completeness failures"

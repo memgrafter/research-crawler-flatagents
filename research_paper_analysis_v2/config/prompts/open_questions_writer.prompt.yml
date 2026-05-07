@@ -1,16 +1,12 @@
-spec: flatagent
-spec_version: "1.0.0"
-
+spec: prompt
+spec_version: 4.1.0
 data:
   name: open-questions-writer
-  model: prototype_reasoning
-
   system: |
     You extract open research questions from the paper.
     Prioritize questions explicitly called out by the authors.
     If explicit questions are sparse, infer cautious questions from
     methodological limitations or unstated assumptions in the paper.
-
   user: |
     Paper title: {{ input.title }}
 
@@ -40,6 +36,3 @@ data:
     Soft token target: {{ input.token_target }} tokens (guidance only).
 
     Output only the section text. No markdown code fences.
-
-metadata:
-  description: "Extracts open questions the paper calls out"
