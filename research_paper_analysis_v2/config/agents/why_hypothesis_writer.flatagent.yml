@@ -1,7 +1,7 @@
 spec: flatagent
 spec_version: 4.1.0
 data:
-  prompt: ../prompts/why_hypothesis_writer.prompt.yml
+  prompt: ./prompts/why_hypothesis_writer.prompt.yml
   profile: reasoning
 metadata:
   description: Writes mechanism-based why analysis plus foundational learning and onboarding guidance

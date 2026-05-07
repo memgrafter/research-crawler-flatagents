@@ -115,7 +115,7 @@ if [[ "$DO_SEED" -eq 1 ]]; then
   echo "==> Seeding into v2 executions (seed-limit=$SEED_LIMIT)"
   (
     cd "$V2_DIR"
-    python run.py --seed-only --seed-limit "$SEED_LIMIT"
+    uv run python run.py --seed-only --seed-limit "$SEED_LIMIT"
   )
 fi
 

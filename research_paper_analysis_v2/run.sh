@@ -39,10 +39,8 @@ export RPA_V2_MAX_WRAP=180
 export RPA_V2_PREP_DOWNLOAD_CONCURRENCY=100
 export RPA_V2_DOWNLOAD_USER_AGENT="research_paper_analysis (mailto:memgrafter@gmail.com)"
 
-# --- Checkpoint retention -------------------------------------------------
-# Keep only terminal snapshots for failed wrap runs by default.
-# Options: keep_wrap_failed (default), keep_failed, purge_all, keep_all
-export RPA_V2_TERMINAL_CHECKPOINT_POLICY="${RPA_V2_TERMINAL_CHECKPOINT_POLICY:-keep_wrap_failed}"
+# --- Checkpoint persistence -----------------------------------------------
+# FlatMachines v4 uses its SDK SQLite checkpoint backend in the executions DB.
 
 # --- aiohttp connection pool (litellm uses aiohttp for async HTTP) ---------
 export AIOHTTP_CONNECTOR_LIMIT=2000

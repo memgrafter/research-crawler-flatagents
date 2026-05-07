@@ -1,7 +1,7 @@
 spec: flatagent
 spec_version: 4.1.0
 data:
-  prompt: ../prompts/key_outcome_writer.prompt.yml
+  prompt: ./prompts/key_outcome_writer.prompt.yml
   profile: reasoning
 metadata:
   description: Writes the key outcome snapshot

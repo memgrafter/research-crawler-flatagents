@@ -1,7 +1,7 @@
 spec: flatagent
 spec_version: 4.1.0
 data:
-  prompt: ../prompts/completeness_judge.prompt.yml
+  prompt: ./prompts/completeness_judge.prompt.yml
   profile: structured
 metadata:
   description: Shared completeness judge with single-token output

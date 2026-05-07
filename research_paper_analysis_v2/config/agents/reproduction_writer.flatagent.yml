@@ -1,7 +1,7 @@
 spec: flatagent
 spec_version: 4.1.0
 data:
-  prompt: ../prompts/reproduction_writer.prompt.yml
+  prompt: ./prompts/reproduction_writer.prompt.yml
   profile: reasoning
 metadata:
   description: Writes practical reproduction notes with explicit assumptions when details are sparse

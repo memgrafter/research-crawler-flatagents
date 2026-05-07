@@ -139,12 +139,39 @@ def get_v2_db() -> sqlite3.Connection:
 
 
 def _migrate_v2_db(conn: sqlite3.Connection) -> None:
-    """Add columns introduced after initial schema."""
-    cols = {row[1] for row in conn.execute("PRAGMA table_info(executions)").fetchall()}
-    if "expensive_output" not in cols:
+    """Apply non-destructive v2 execution DB schema migrations."""
+    execution_cols = {row[1] for row in conn.execute("PRAGMA table_info(executions)").fetchall()}
+    if "expensive_output" not in execution_cols:
         conn.execute("ALTER TABLE executions ADD COLUMN expensive_output TEXT")
-        conn.commit()
-        logger.info("Migrated: added expensive_output column")
+        logger.info("Migrated executions: added expensive_output column")
+
+    checkpoint_cols = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(machine_checkpoints)").fetchall()
+    }
+    if checkpoint_cols and "waiting_channel" not in checkpoint_cols:
+        conn.execute("ALTER TABLE machine_checkpoints ADD COLUMN waiting_channel TEXT")
+        logger.info("Migrated machine_checkpoints: added waiting_channel column")
+
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_mc_waiting_channel
+          ON machine_checkpoints(waiting_channel)
+          WHERE waiting_channel IS NOT NULL
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS machine_configs (
+            config_hash  TEXT PRIMARY KEY,
+            machine_name TEXT,
+            spec_version TEXT,
+            config_raw   TEXT NOT NULL,
+            created_at   TEXT NOT NULL
+        )
+        """
+    )
+    conn.commit()
 
 
 def get_arxiv_db() -> Optional[sqlite3.Connection]:
@@ -212,7 +239,7 @@ def get_checkpoint_backend():
     if _CHECKPOINT_BACKEND is not None:
         return _CHECKPOINT_BACKEND
 
-    from research_paper_analysis_v2.sqlite_checkpoint_backend import SQLiteCheckpointBackend
+    from flatmachines.persistence import SQLiteCheckpointBackend
 
     db_path = os.environ.get("V2_EXECUTIONS_DB_PATH", str(DATA_DIR / "v2_executions.sqlite"))
     _CHECKPOINT_BACKEND = SQLiteCheckpointBackend(db_path=db_path)

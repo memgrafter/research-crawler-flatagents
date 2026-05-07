@@ -1,7 +1,7 @@
 spec: flatagent
 spec_version: 4.1.0
 data:
-  prompt: ../prompts/report_assembler.prompt.yml
+  prompt: ./prompts/report_assembler.prompt.yml
   profile: structured
 metadata:
   description: Assembles body markdown with mechanism, foundational learning, onboarding, open questions, and validation sections

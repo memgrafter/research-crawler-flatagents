@@ -43,17 +43,21 @@ CREATE INDEX IF NOT EXISTS idx_execution_leases_until ON execution_leases(lease_
 
 -- DB-backed checkpoints (replaces high-churn checkpoint temp files when enabled).
 CREATE TABLE IF NOT EXISTS machine_checkpoints (
-    checkpoint_key TEXT PRIMARY KEY,
-    execution_id   TEXT NOT NULL,
-    machine_name   TEXT,
-    event          TEXT,
-    current_state  TEXT,
-    snapshot_json  BLOB NOT NULL,
-    created_at     TEXT NOT NULL
+    checkpoint_key  TEXT PRIMARY KEY,
+    execution_id    TEXT NOT NULL,
+    machine_name    TEXT,
+    event           TEXT,
+    current_state   TEXT,
+    waiting_channel TEXT,
+    snapshot_json   BLOB NOT NULL,
+    created_at      TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_mc_execution_created ON machine_checkpoints(execution_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_mc_machine_name ON machine_checkpoints(machine_name);
+CREATE INDEX IF NOT EXISTS idx_mc_waiting_channel
+    ON machine_checkpoints(waiting_channel)
+    WHERE waiting_channel IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS machine_latest (
     execution_id TEXT PRIMARY KEY,
@@ -62,3 +66,12 @@ CREATE TABLE IF NOT EXISTS machine_latest (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ml_latest_key ON machine_latest(latest_key);
+
+-- FlatMachines v4 content-addressed config store used by the SDK SQLite backend.
+CREATE TABLE IF NOT EXISTS machine_configs (
+    config_hash  TEXT PRIMARY KEY,
+    machine_name TEXT,
+    spec_version TEXT,
+    config_raw   TEXT NOT NULL,
+    created_at   TEXT NOT NULL
+);

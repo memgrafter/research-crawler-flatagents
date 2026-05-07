@@ -1,7 +1,7 @@
 spec: flatagent
 spec_version: 4.1.0
 data:
-  prompt: ../prompts/targeted_repair.prompt.yml
+  prompt: ./prompts/targeted_repair.prompt.yml
   profile: structured
 metadata:
   description: Single-pass targeted repair for completeness failures

@@ -115,8 +115,8 @@ if [[ -n "\$pid" ]]; then
   lsof -p "\$pid" | wc -l
   echo -n 'fd_tcp_est='
   lsof -nP -a -p "\$pid" -iTCP -sTCP:ESTABLISHED | wc -l
-  echo -n 'fd_checkpoint_tmp='
-  lsof -nP -a -p "\$pid" | awk 'NR>1 && \$9 ~ /data\/checkpoints\/.*\.tmp\$/ {c++} END {print c+0}'
+  echo -n 'fd_sqlite_checkpoint='
+  lsof -nP -a -p "\$pid" | awk 'NR>1 && \$9 ~ /data\/v2_executions.*\.sqlite(-wal|-shm)?\$/ {c++} END {print c+0}'
   echo -n 'fd_locks='
   lsof -nP -a -p "\$pid" | awk 'NR>1 && \$9 ~ /\.locks\// {c++} END {print c+0}'
 else
