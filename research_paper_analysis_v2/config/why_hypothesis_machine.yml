@@ -1,15 +1,10 @@
 spec: flatmachine
-spec_version: "1.0.0"
-
+spec_version: 4.1.0
 data:
   name: why-hypothesis
-  profiles: ./profiles.yml
-
   agents:
-    writer: ./why_hypothesis_writer.yml
-
+    writer: ./agents/why_hypothesis_writer.flatagent.yml
   context:
-    # Capture inbound machine input into local context (required for agent input mapping)
     title: input.title
     key_outcome: input.key_outcome
     abstract: input.abstract
@@ -17,15 +12,13 @@ data:
     corpus_signals: input.corpus_signals
     corpus_neighbors: input.corpus_neighbors
     token_target_why: input.token_target_why
-
     result: null
-
   states:
     start:
       type: initial
       transitions:
-        - to: write
-
+      - to: write
+      hooks: v2-hooks
     write:
       agent: writer
       execution:
@@ -41,12 +34,12 @@ data:
       output_to_context:
         result: output.content
       transitions:
-        - to: done
-
+      - to: done
+      hooks: v2-hooks
     done:
       type: final
       output:
         content: context.result
-
+  lifecycle_hooks: v2-hooks
 metadata:
-  description: "Wrapper machine for why_hypothesis_writer (expensive model)"
+  description: Wrapper machine for why_hypothesis_writer (expensive model)

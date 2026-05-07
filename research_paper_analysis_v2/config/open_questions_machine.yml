@@ -1,29 +1,22 @@
 spec: flatmachine
-spec_version: "1.0.0"
-
+spec_version: 4.1.0
 data:
   name: open-questions
-  profiles: ./profiles.yml
-
   agents:
-    writer: ./open_questions_writer.yml
-
+    writer: ./agents/open_questions_writer.flatagent.yml
   context:
-    # Capture inbound machine input into local context (required for agent input mapping)
     title: input.title
     key_outcome: input.key_outcome
     abstract: input.abstract
     paper_text: input.paper_text
     token_target_open_questions: input.token_target_open_questions
-
     result: null
-
   states:
     start:
       type: initial
       transitions:
-        - to: write
-
+      - to: write
+      hooks: v2-hooks
     write:
       agent: writer
       execution:
@@ -37,12 +30,12 @@ data:
       output_to_context:
         result: output.content
       transitions:
-        - to: done
-
+      - to: done
+      hooks: v2-hooks
     done:
       type: final
       output:
         content: context.result
-
+  lifecycle_hooks: v2-hooks
 metadata:
-  description: "Wrapper machine for open_questions_writer (expensive model)"
+  description: Wrapper machine for open_questions_writer (expensive model)

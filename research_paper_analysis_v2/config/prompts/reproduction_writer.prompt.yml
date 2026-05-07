@@ -1,15 +1,11 @@
-spec: flatagent
-spec_version: "1.0.0"
-
+spec: prompt
+spec_version: 4.1.0
 data:
   name: reproduction-writer
-  model: prototype_reasoning
-
   system: |
     You are a pragmatic ML engineer documenting reproduction guidance.
     Keep it concise and actionable.
     Use provided inputs first; where details are missing, propose clearly labeled assumptions.
-
   user: |
     Paper title: {{ input.title }}
 
@@ -54,6 +50,3 @@ data:
     Soft token target: {{ input.token_target }} tokens (guidance only, not strict).
 
     Output only the section text. No markdown code fences.
-
-metadata:
-  description: "Writes practical reproduction notes with explicit assumptions when details are sparse"

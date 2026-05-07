@@ -175,6 +175,13 @@ def get_arxiv_db() -> Optional[sqlite3.Connection]:
         return _ARXIV_DB_CONN
 
 
+def get_hooks_registry():
+    """Return a fresh FlatMachines v4 hooks registry for V2Hooks."""
+    from research_paper_analysis_v2.flatmachine_v4 import create_v2_hooks_registry
+
+    return create_v2_hooks_registry()
+
+
 def get_lease_lock():
     """Return process-wide DB-backed execution lease lock."""
     global _LEASE_LOCK
@@ -538,6 +545,7 @@ async def run_prep(execution: Dict[str, Any]) -> bool:
             config_file=PREP_CONFIG,
             persistence=get_checkpoint_backend(),
             lock=get_lease_lock(),
+            hooks_registry=get_hooks_registry(),
             _execution_id=execution_id,
         )
         result = await machine.execute(input={
@@ -582,6 +590,7 @@ async def run_expensive(execution: Dict[str, Any]) -> bool:
             config_file=EXPENSIVE_CONFIG,
             persistence=get_checkpoint_backend(),
             lock=get_lease_lock(),
+            hooks_registry=get_hooks_registry(),
             _execution_id=execution_id,
         )
         result = await machine.execute(input={
@@ -638,6 +647,7 @@ async def run_wrap(execution: Dict[str, Any]) -> bool:
             config_file=WRAP_CONFIG,
             persistence=get_checkpoint_backend(),
             lock=get_lease_lock(),
+            hooks_registry=get_hooks_registry(),
             _execution_id=execution_id,
         )
         result = await machine.execute(input={
@@ -690,6 +700,7 @@ async def resume_machine(execution_id: str, machine_name: str, config_file: str)
             config_file=config_file,
             persistence=get_checkpoint_backend(),
             lock=get_lease_lock(),
+            hooks_registry=get_hooks_registry(),
         )
         result = await machine.execute(resume_from=execution_id)
 

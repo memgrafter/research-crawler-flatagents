@@ -1,0 +1,7 @@
+spec: flatagent
+spec_version: 4.1.0
+data:
+  prompt: ../prompts/open_questions_writer.prompt.yml
+  profile: reasoning
+metadata:
+  description: Extracts open questions the paper calls out

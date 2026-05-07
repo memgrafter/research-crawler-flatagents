@@ -12,11 +12,15 @@ from pathlib import Path
 from typing import Any, Dict
 
 from flatmachines import FlatMachine
+from research_paper_analysis_v2.flatmachine_v4 import create_v2_hooks_registry
 
 
 async def run_with_input(payload: Dict[str, Any]) -> Dict[str, Any]:
     root = Path(__file__).resolve().parents[2]
-    machine = FlatMachine(config_file=str(root / "config" / "machine.yml"))
+    machine = FlatMachine(
+        config_file=str(root / "config" / "machine.yml"),
+        hooks_registry=create_v2_hooks_registry(),
+    )
     return await machine.execute(input=payload)
 
 

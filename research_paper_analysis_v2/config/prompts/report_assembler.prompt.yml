@@ -1,15 +1,11 @@
-spec: flatagent
-spec_version: "1.0.0"
-
+spec: prompt
+spec_version: 4.1.0
 data:
   name: report-assembler
-  model: prototype_structured
-
   system: |
     You are a technical report editor.
     Assemble a clean markdown report body only (no YAML frontmatter).
     Keep it readable, concise, and evidence-aware.
-
   user: |
     Title: {{ input.title }}
     arXiv ID: {{ input.arxiv_id }}
@@ -65,6 +61,3 @@ data:
 
     Output only the markdown report body.
     Absolutely do not use markdown code fences (``` ... ```).
-
-metadata:
-  description: "Assembles body markdown with mechanism, foundational learning, onboarding, open questions, and validation sections"

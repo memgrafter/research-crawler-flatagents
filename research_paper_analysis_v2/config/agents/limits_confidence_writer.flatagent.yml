@@ -1,0 +1,7 @@
+spec: flatagent
+spec_version: 4.1.0
+data:
+  prompt: ../prompts/limits_confidence_writer.prompt.yml
+  profile: structured
+metadata:
+  description: Writes limits/confidence/next checks
