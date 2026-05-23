@@ -27,7 +27,6 @@ allow-direct-references = true
 [tool.hatch.build.targets.wheel]
 packages = ["src/research_paper_analysis_v2"]
 
-# uncomment to run locally
-#[tool.uv.sources]
-#flatagents = { path = "../../flatagents/sdk/python/flatagents", editable = true }
-#flatmachines = { path = "../../flatagents/sdk/python/flatmachines", editable = true }
+[tool.uv.sources]
+flatagents = { path = "../../flatmachines/sdk/python/flatagents", editable = true }
+flatmachines = { path = "../../flatmachines/sdk/python/flatmachines", editable = true }

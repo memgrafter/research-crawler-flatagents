@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS executions (
     prep_output   TEXT,                 -- JSON blob: key_outcome, corpus_signals, section_text, etc.
     expensive_output TEXT,              -- JSON blob: why_hypotheses, reproduction_notes, open_questions
     result_path   TEXT,                 -- path to output report .md
-    error         TEXT
+    error         TEXT,
+    priority      INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_executions_arxiv ON executions(arxiv_id);
@@ -55,10 +56,6 @@ CREATE TABLE IF NOT EXISTS machine_checkpoints (
 
 CREATE INDEX IF NOT EXISTS idx_mc_execution_created ON machine_checkpoints(execution_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_mc_machine_name ON machine_checkpoints(machine_name);
-CREATE INDEX IF NOT EXISTS idx_mc_waiting_channel
-    ON machine_checkpoints(waiting_channel)
-    WHERE waiting_channel IS NOT NULL;
-
 CREATE TABLE IF NOT EXISTS machine_latest (
     execution_id TEXT PRIMARY KEY,
     latest_key   TEXT NOT NULL,

@@ -46,6 +46,11 @@ logger = logging.getLogger("v2_runner")
 try:
     import litellm
     litellm.suppress_debug_info = True
+    # Some OpenAI-compatible/vLLM servers emit duplicate HTTP headers that aiohttp
+    # rejects while httpx accepts. FlatAgent uses litellm.acompletion(), so force
+    # LiteLLM async calls onto httpx for compatibility with those endpoints.
+    litellm.disable_aiohttp_transport = True
+    litellm.use_aiohttp_transport = False
 except ImportError:
     pass
 
@@ -144,6 +149,9 @@ def _migrate_v2_db(conn: sqlite3.Connection) -> None:
     if "expensive_output" not in execution_cols:
         conn.execute("ALTER TABLE executions ADD COLUMN expensive_output TEXT")
         logger.info("Migrated executions: added expensive_output column")
+    if "priority" not in execution_cols:
+        conn.execute("ALTER TABLE executions ADD COLUMN priority INTEGER NOT NULL DEFAULT 0")
+        logger.info("Migrated executions: added priority column")
 
     checkpoint_cols = {
         row[1]
@@ -317,7 +325,7 @@ def seed(limit: int = 500) -> int:
             FROM papers
             GROUP BY arxiv_id
         )
-        SELECT p.id AS paper_id, p.arxiv_id, p.title, p.authors, p.abstract
+        SELECT p.id AS paper_id, p.arxiv_id, p.title, p.authors, p.abstract, q.priority
         FROM paper_queue q
         JOIN papers p ON p.id = q.paper_id
         JOIN latest_versions lv
@@ -337,8 +345,8 @@ def seed(limit: int = 500) -> int:
             v2_conn.execute(
                 """
                 INSERT OR IGNORE INTO executions
-                (execution_id, arxiv_id, paper_id, title, authors, abstract, status, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+                (execution_id, arxiv_id, paper_id, title, authors, abstract, status, created_at, updated_at, priority)
+                VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
                 """,
                 (
                     execution_id,
@@ -349,6 +357,7 @@ def seed(limit: int = 500) -> int:
                     row["abstract"] or "",
                     now,
                     now,
+                    int(row["priority"] or 0),
                 ),
             )
             if v2_conn.total_changes:

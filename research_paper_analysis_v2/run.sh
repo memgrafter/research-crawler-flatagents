@@ -38,6 +38,9 @@ export RPA_V2_MAX_WRAP=180
 # Pump PDF download concurrency for gs/export fetches.
 export RPA_V2_PREP_DOWNLOAD_CONCURRENCY=100
 export RPA_V2_DOWNLOAD_USER_AGENT="research_paper_analysis (mailto:memgrafter@gmail.com)"
+# GCS/Kaggle PDF fetch uses `gsutil` discovered from PATH by default.
+# Uncomment to pin an explicit command path if PATH discovery breaks:
+# export RPA_V2_GSUTIL_BIN="/Users/trentrobbins/Downloads/google-cloud-sdk/bin/gsutil"
 
 # --- Checkpoint persistence -----------------------------------------------
 # FlatMachines v4 uses its SDK SQLite checkpoint backend in the executions DB.

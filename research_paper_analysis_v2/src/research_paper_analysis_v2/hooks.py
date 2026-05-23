@@ -29,6 +29,7 @@ import json
 import math
 import os
 import re
+import shutil
 import sqlite3
 import threading
 from collections import Counter
@@ -482,9 +483,17 @@ HTTP_MAX_CONNECTIONS = int(os.environ.get("RPA_V2_HTTP_MAX_CONN", "128"))
 HTTP_MAX_KEEPALIVE = int(os.environ.get("RPA_V2_HTTP_KEEPALIVE", "64"))
 DOWNLOAD_USER_AGENT = os.environ.get("RPA_V2_DOWNLOAD_USER_AGENT", "")
 
-# GCS archive download (gsutil first attempt)
-GSUTIL_BIN = str(Path.home() / "virtualenvs" / "gsutil" / "bin" / "gsutil")
-GCS_PDF_PREFIX = "gs://arxiv-dataset/arxiv/pdf"
+# GCS archive download (Kaggle/arxiv-dataset first attempt).
+# Prefer an explicit override, otherwise discover gsutil from PATH.
+GSUTIL_BIN = os.environ.get("RPA_V2_GSUTIL_BIN") or shutil.which("gsutil")
+GCS_PDF_PREFIXES = [
+    p.strip().rstrip("/")
+    for p in os.environ.get(
+        "RPA_V2_GCS_PDF_PREFIXES",
+        "gs://arxiv-dataset/arxiv/pdf,gs://arxiv-dataset/arxiv/arxiv/pdf",
+    ).split(",")
+    if p.strip()
+]
 
 # Fixed retry schedule (no env tuning).
 # Example with retries: DOWNLOAD_RETRY_DELAYS_SECS = [0.75, 1.5, 3.0]
@@ -580,9 +589,9 @@ async def _get_http_client() -> httpx.AsyncClient:
     return _HTTP_CLIENT
 
 
-def _gcs_pdf_uri_for_arxiv(arxiv_id: str) -> str:
+def _gcs_pdf_uris_for_arxiv(arxiv_id: str) -> List[str]:
     month = arxiv_id[:4]
-    return f"{GCS_PDF_PREFIX}/{month}/{arxiv_id}v1.pdf"
+    return [f"{prefix}/{month}/{arxiv_id}v1.pdf" for prefix in GCS_PDF_PREFIXES]
 
 
 def _extract_pdf_text_sync(pdf_path_str: str, txt_path_str: str) -> Tuple[str, int]:
@@ -760,47 +769,47 @@ class V2Hooks(LoggingHooks):
     # -------------------------------------------------------------------------
 
     async def _download_pdf_from_gs(self, arxiv_id: str, pdf_path: Path) -> Dict[str, Any]:
-        gs_uri = _gcs_pdf_uri_for_arxiv(arxiv_id)
-
-        if not Path(GSUTIL_BIN).exists():
-            raise RuntimeError(f"gsutil not found at {GSUTIL_BIN}")
+        if not GSUTIL_BIN or not Path(GSUTIL_BIN).exists():
+            raise FileNotFoundError(f"required gsutil command not found at {GSUTIL_BIN}")
 
         t0 = time.perf_counter()
+        errors: List[str] = []
         async with _get_download_sem():
-            logger.info("Downloading PDF via gsutil: %s", gs_uri)
-            proc = await asyncio.create_subprocess_exec(
-                GSUTIL_BIN,
-                "cp",
-                gs_uri,
-                str(pdf_path),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout_b, stderr_b = await proc.communicate()
+            for gs_uri in _gcs_pdf_uris_for_arxiv(arxiv_id):
+                logger.info("Downloading PDF via gsutil: %s", gs_uri)
+                proc = await asyncio.create_subprocess_exec(
+                    GSUTIL_BIN,
+                    "cp",
+                    gs_uri,
+                    str(pdf_path),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout_b, stderr_b = await proc.communicate()
+                if proc.returncode == 0:
+                    if not pdf_path.exists():
+                        raise RuntimeError(f"gsutil cp succeeded but file missing for {gs_uri}")
+                    size = pdf_path.stat().st_size
+                    if size <= 0:
+                        raise RuntimeError(f"gsutil cp produced empty file for {gs_uri}")
+                    logger.info(
+                        "download_pdf done arxiv_id=%s ms=%.0f bytes=%d attempts=%d source=gsutil uri=%s",
+                        arxiv_id,
+                        (time.perf_counter() - t0) * 1000,
+                        size,
+                        1,
+                        gs_uri,
+                    )
+                    return {"pdf_path": str(pdf_path)}
 
-        if proc.returncode != 0:
-            try:
-                pdf_path.unlink()
-            except FileNotFoundError:
-                pass
-            detail = (stderr_b or stdout_b or b"").decode("utf-8", errors="replace").strip()
-            raise RuntimeError(f"gsutil cp failed rc={proc.returncode} uri={gs_uri}: {detail[:400]}")
+                try:
+                    pdf_path.unlink()
+                except FileNotFoundError:
+                    pass
+                detail = (stderr_b or stdout_b or b"").decode("utf-8", errors="replace").strip()
+                errors.append(f"{gs_uri}: rc={proc.returncode} {detail[:240]}")
 
-        if not pdf_path.exists():
-            raise RuntimeError(f"gsutil cp succeeded but file missing for {gs_uri}")
-
-        size = pdf_path.stat().st_size
-        if size <= 0:
-            raise RuntimeError(f"gsutil cp produced empty file for {gs_uri}")
-
-        logger.info(
-            "download_pdf done arxiv_id=%s ms=%.0f bytes=%d attempts=%d source=gsutil",
-            arxiv_id,
-            (time.perf_counter() - t0) * 1000,
-            size,
-            1,
-        )
-        return {"pdf_path": str(pdf_path)}
+        raise RuntimeError("; ".join(errors)[:900] or "gsutil cp failed for all configured GCS prefixes")
 
     async def _download_pdf_from_export(self, context: Dict[str, Any], arxiv_id: str, pdf_path: Path) -> Dict[str, Any]:
         pdf_url = f"https://export.arxiv.org/pdf/{arxiv_id}"
@@ -902,6 +911,11 @@ class V2Hooks(LoggingHooks):
             context.update(result)
             return context
         except asyncio.CancelledError:
+            raise
+        except FileNotFoundError:
+            # gsutil/GCP CLI is required for the intended Kaggle/GCS-first path.
+            # Do not silently fall back to export.arxiv.org when the tool itself is missing;
+            # that hides local setup errors and causes arXiv throttling at scale.
             raise
         except Exception as gs_exc:
             logger.warning("gsutil download failed arxiv_id=%s: %s", arxiv_id, gs_exc)
