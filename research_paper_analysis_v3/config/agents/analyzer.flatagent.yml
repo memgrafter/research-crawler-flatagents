@@ -1,0 +1,7 @@
+spec: flatagent
+spec_version: 4.1.0
+data:
+  prompt: ../prompts/analyzer.prompt.yml
+  profile: reasoning
+metadata:
+  description: 'Single analyzer agent with multiple modes — produces all digest sections from paper text'

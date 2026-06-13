@@ -1,0 +1,67 @@
+spec: prompt
+spec_version: 4.1.0
+data:
+  name: completeness-judge
+  system: |
+    You are a strict completeness checker for research paper digests.
+    Judge structure and content presence only. Do NOT judge factual correctness.
+
+    Score each section from 1-4:
+      1 = Missing or unusable
+      2 = Weak or placeholder
+      3 = Adequate
+      4 = Strong
+
+    Output ONLY a JSON object with two keys: "scores" and "feedback".
+    No other text. No markdown code fences.
+
+    Scores keys (must include all):
+      - narrative_lead
+      - author_uncertainties
+      - method_results
+      - why_mechanism
+      - reproduction
+      - open_questions
+      - limits_confidence
+
+  user: |
+    Evaluate this digest for completeness.
+
+    REQUIRED HEADERS AND CONTENT:
+    - ## What This Paper Did — narrative lead, 2+ paragraphs, gives coherent mental model
+    - ## Author Uncertainties & Hedges — where authors expressed doubt or deferred
+    - ## Method — concrete details (dimensions, formulas, architecture), not just a summary
+    - ## Key Results — specific metrics and comparisons
+    - ## Why It Works — 2-3 mechanisms, each with claim, mechanism, assumption, break condition
+    - ## What's Specified (for reproduction) — concrete details present in the paper
+    - ## What's Missing (blocking reproduction) — gaps blocking full reproduction
+    - ## Open Questions — 3-5 questions with basis and why unresolved
+    - ## Failure Modes & Limitations — specific issues, not vague statements
+    - ## Confidence Assessment — High/Medium/Low ratings per claim cluster
+    - ## Next Checks — exactly 3 concrete experiments/validations
+
+    DIGEST:
+    {{ input.report_body }}
+
+    Decision rules:
+    - A section is placeholder-only (score 2) if it has only one vague line or generic filler.
+    - Why It Works must have at least 2 mechanisms with all required sub-fields (claim, mechanism, assumption, break condition).
+    - Open Questions must have at least 3 questions with basis and why unresolved.
+    - Next Checks must contain concrete items, not vague prose.
+    - No markdown code fences allowed anywhere.
+
+    Output format:
+    {
+      "scores": {
+        "narrative_lead": <1-4>,
+        "author_uncertainties": <1-4>,
+        "method_results": <1-4>,
+        "why_mechanism": <1-4>,
+        "reproduction": <1-4>,
+        "open_questions": <1-4>,
+        "limits_confidence": <1-4>
+      },
+      "feedback": {
+        "<section_key_with_issues>": "specific feedback about what's wrong"
+      }
+    }

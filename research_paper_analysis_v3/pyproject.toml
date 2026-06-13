@@ -1,0 +1,27 @@
+[project]
+name = "research_paper_analysis_v3"
+version = "0.1.0"
+description = "Single-machine analyzer pipeline with pinned KV cache and parallel fan-out"
+dependencies = [
+    "flatagents[litellm,metrics]>=4,<5",
+    "flatmachines[flatagents,metrics]>=4,<5",
+    "pyyaml",
+]
+requires-python = ">=3.11"
+
+[project.scripts]
+research-paper-v3 = "research_paper_analysis_v3.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/research_paper_analysis_v3"]
+
+[tool.uv.sources]
+flatagents = { path = "../../flatmachines/sdk/python/flatagents", editable = true }
+flatmachines = { path = "../../flatmachines/sdk/python/flatmachines", editable = true }

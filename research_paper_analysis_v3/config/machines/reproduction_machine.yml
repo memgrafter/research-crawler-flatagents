@@ -1,0 +1,39 @@
+spec: flatmachine
+spec_version: 4.1.0
+data:
+  name: reproduction
+  agents:
+    analyzer: ../agents/analyzer.flatagent.yml
+  context:
+    title: input.title
+    abstract: input.abstract
+    paper_text: input.paper_text
+    reference_count: input.reference_count
+    reproduction: null
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: write_reproduction
+    write_reproduction:
+      agent: analyzer
+      execution:
+        type: retry
+        backoffs:
+          - 12
+          - 24
+      input:
+        mode: reproduction
+        title: context.title
+        abstract: context.abstract
+        paper_text: context.paper_text
+        reference_count: context.reference_count
+      output_to_context:
+        reproduction: output.content
+      transitions:
+        - to: done
+    done:
+      type: final
+      output:
+        content: context.reproduction
+  lifecycle_hooks: v3-hooks

@@ -1,0 +1,45 @@
+spec: flatmachine
+spec_version: 4.1.0
+data:
+  name: narrative-lead
+  agents:
+    analyzer: ../agents/analyzer.flatagent.yml
+  context:
+    title: input.title
+    authors: input.authors
+    abstract: input.abstract
+    paper_text: input.paper_text
+    corpus_signals: input.corpus_signals
+    corpus_neighbors: input.corpus_neighbors
+    narrative_lead: null
+    author_uncertainties: null
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: write_narrative_lead
+    write_narrative_lead:
+      agent: analyzer
+      execution:
+        type: retry
+        backoffs:
+          - 12
+          - 24
+      input:
+        mode: narrative_lead
+        title: context.title
+        authors: context.authors
+        abstract: context.abstract
+        paper_text: context.paper_text
+        corpus_signals: context.corpus_signals
+        corpus_neighbors: context.corpus_neighbors
+      output_to_context:
+        narrative_lead: output.content
+        author_uncertainties: output.author_uncertainties
+      transitions:
+        - to: done
+    done:
+      type: final
+      output:
+        content: context.narrative_lead
+  lifecycle_hooks: v3-hooks

@@ -1,0 +1,37 @@
+spec: flatmachine
+spec_version: 4.1.0
+data:
+  name: why-mechanism
+  agents:
+    analyzer: ../agents/analyzer.flatagent.yml
+  context:
+    title: input.title
+    abstract: input.abstract
+    paper_text: input.paper_text
+    why_mechanism: null
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: write_why_mechanism
+    write_why_mechanism:
+      agent: analyzer
+      execution:
+        type: retry
+        backoffs:
+          - 12
+          - 24
+      input:
+        mode: why_mechanism
+        title: context.title
+        abstract: context.abstract
+        paper_text: context.paper_text
+      output_to_context:
+        why_mechanism: output.content
+      transitions:
+        - to: done
+    done:
+      type: final
+      output:
+        content: context.why_mechanism
+  lifecycle_hooks: v3-hooks

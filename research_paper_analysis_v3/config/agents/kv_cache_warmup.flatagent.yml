@@ -1,0 +1,7 @@
+spec: flatagent
+spec_version: 4.1.0
+data:
+  prompt: ../prompts/kv_cache_warmup.prompt.yml
+  profile: reasoning
+metadata:
+  description: 'Sends the shared prefix (system + paper text) through the LLM to populate the KV cache before fan-out'

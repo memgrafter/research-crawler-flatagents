@@ -1,0 +1,17 @@
+spec: prompt
+spec_version: 4.1.0
+data:
+  name: kv-cache-warmup
+  system: |
+    You are a technical research analyst for ML papers. Be precise and evidence-aware.
+    Never use markdown code fences.
+  user: |
+    Paper title: {{ input.title }}
+
+    Abstract:
+    {{ input.abstract }}
+
+    Paper text:
+    {{ input.paper_text }}
+
+    This is a prefix cache event, reply "ok".

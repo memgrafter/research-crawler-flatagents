@@ -1,0 +1,52 @@
+spec: flatmachine
+spec_version: 4.1.0
+data:
+  name: kv-cache-warmup
+  agents:
+    warmup: ./agents/kv_cache_warmup.flatagent.yml
+  context:
+    title: input.title
+    abstract: input.abstract
+    paper_text: input.paper_text
+    cache_pinned: false
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: warmup_cache
+
+    # Send the shared prefix (system + paper text) through the LLM so the
+    # serving backend's KV cache has it warm for the fan-out sub-machines.
+    # The prompt ends with "This is a prefix cache event, reply 'ok'." —
+    # minimal output, just needs to process the full prefix.
+    warmup_cache:
+      agent: warmup
+      execution:
+        type: retry
+        backoffs:
+          - 12
+          - 24
+      input:
+        title: context.title
+        abstract: context.abstract
+        paper_text: context.paper_text
+      output_to_context:
+        warmup_response: output.content
+      transitions:
+        - to: mark_pinned
+
+    mark_pinned:
+      action: mark_cache_pinned
+      transitions:
+        - to: done
+
+    done:
+      type: final
+      output:
+        cache_pinned: context.cache_pinned
+  lifecycle_hooks: v3-hooks
+metadata:
+  description: 'Warm up KV cache by sending shared prefix through LLM before fan-out'
+  tags:
+    - kv-cache
+    - warmup

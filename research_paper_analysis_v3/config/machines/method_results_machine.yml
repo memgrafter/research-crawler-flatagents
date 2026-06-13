@@ -1,0 +1,37 @@
+spec: flatmachine
+spec_version: 4.1.0
+data:
+  name: method-results
+  agents:
+    analyzer: ../agents/analyzer.flatagent.yml
+  context:
+    title: input.title
+    abstract: input.abstract
+    paper_text: input.paper_text
+    method_results: null
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: write_method_results
+    write_method_results:
+      agent: analyzer
+      execution:
+        type: retry
+        backoffs:
+          - 12
+          - 24
+      input:
+        mode: method_results
+        title: context.title
+        abstract: context.abstract
+        paper_text: context.paper_text
+      output_to_context:
+        method_results: output.content
+      transitions:
+        - to: done
+    done:
+      type: final
+      output:
+        content: context.method_results
+  lifecycle_hooks: v3-hooks

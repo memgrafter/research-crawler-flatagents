@@ -1,0 +1,37 @@
+spec: flatmachine
+spec_version: 4.1.0
+data:
+  name: open-questions
+  agents:
+    analyzer: ../agents/analyzer.flatagent.yml
+  context:
+    title: input.title
+    abstract: input.abstract
+    paper_text: input.paper_text
+    open_questions: null
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: write_open_questions
+    write_open_questions:
+      agent: analyzer
+      execution:
+        type: retry
+        backoffs:
+          - 12
+          - 24
+      input:
+        mode: open_questions
+        title: context.title
+        abstract: context.abstract
+        paper_text: context.paper_text
+      output_to_context:
+        open_questions: output.content
+      transitions:
+        - to: done
+    done:
+      type: final
+      output:
+        content: context.open_questions
+  lifecycle_hooks: v3-hooks

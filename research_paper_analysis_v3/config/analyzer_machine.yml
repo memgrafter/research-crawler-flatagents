@@ -1,0 +1,202 @@
+spec: flatmachine
+spec_version: 4.1.0
+data:
+  name: analyzer-pipeline
+  persistence:
+    enabled: true
+    backend: local
+  settings:
+    max_steps: 20
+  context:
+    # Inputs from prep
+    arxiv_id: input.arxiv_id
+    execution_id: input.execution_id
+    paper_id: input.paper_id
+    source_url: input.source_url
+    title: input.title
+    authors: input.authors
+    abstract: input.abstract
+    cleaned_paper_text: input.cleaned_paper_text
+    corpus_signals: input.corpus_signals
+    corpus_neighbors: input.corpus_neighbors
+    reference_count: input.reference_count
+
+    # Fan-out section outputs (populated by sub-machines)
+    narrative_lead: null
+    author_uncertainties: null
+    method_results: null
+    why_mechanism: null
+    reproduction: null
+    open_questions: null
+    limits_confidence: null
+
+    # Assembled report
+    report_body: null
+
+    # Judge state
+    judge_decision_raw: null
+    judge_decision: null
+    repair_attempted: false
+
+    # Final output
+    frontmatter: null
+    formatted_report: null
+    result_path: null
+  agents:
+    analyzer: ./agents/analyzer.flatagent.yml
+    completeness_judge: ./agents/completeness_judge.flatagent.yml
+  machines:
+    kv_cache_machine: ./kv_cache_machine.yml
+    narrative_lead_machine: ./machines/narrative_lead_machine.yml
+    method_results_machine: ./machines/method_results_machine.yml
+    why_mechanism_machine: ./machines/why_mechanism_machine.yml
+    reproduction_machine: ./machines/reproduction_machine.yml
+    open_questions_machine: ./machines/open_questions_machine.yml
+    limits_confidence_machine: ./machines/limits_confidence_machine.yml
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: warmup_kv_cache
+
+    # ── Warm up / pin KV cache before fan-out ────────────────────────
+    warmup_kv_cache:
+      machine: kv_cache_machine
+      input:
+        title: context.title
+        paper_text: context.cleaned_paper_text
+      output_to_context:
+        cache_pinned: output.cache_pinned
+      transitions:
+        - to: fan_out_sections
+
+    # ── Fan out all sections in parallel ──────────────────────────────
+    fan_out_sections:
+      machine:
+        - narrative_lead_machine
+        - method_results_machine
+        - why_mechanism_machine
+        - reproduction_machine
+        - open_questions_machine
+        - limits_confidence_machine
+      mode: settled
+      input:
+        title: context.title
+        authors: context.authors
+        abstract: context.abstract
+        paper_text: context.cleaned_paper_text
+        corpus_signals: context.corpus_signals
+        corpus_neighbors: context.corpus_neighbors
+        reference_count: context.reference_count
+      output_to_context:
+        fan_out_raw: output
+      on_error: analyzer_failed
+      transitions:
+        - to: unpack_fan_out_results
+
+    # ── Unpack parallel results into context ──────────────────────────
+    unpack_fan_out_results:
+      action: unpack_fan_out_results
+      transitions:
+        - to: assemble_report
+
+    # ── Non-agentic assembly ─────────────────────────────────────────
+    assemble_report:
+      action: assemble_report
+      transitions:
+        - to: judge_report
+
+    # ── Judge with scoring rubric ────────────────────────────────────
+    judge_report:
+      agent: completeness_judge
+      execution:
+        type: retry
+        backoffs:
+          - 12
+          - 24
+      input:
+        report_body: context.report_body
+      output_to_context:
+        judge_decision_raw: output.content
+      on_error: analyzer_failed
+      transitions:
+        - to: normalize_judge_decision
+
+    # ── Route based on judge decision ────────────────────────────────
+    normalize_judge_decision:
+      action: normalize_judge_decision
+      transitions:
+        - condition: context.judge_decision == 'PASS'
+          to: prepend_frontmatter
+        - condition: context.judge_decision == 'FAIL'
+          to: analyzer_failed
+        - condition: context.repair_attempted == true
+          to: analyzer_failed
+        - to: repair_sections
+
+    # ── Targeted repair (uses pinned cache) ──────────────────────────
+    repair_sections:
+      agent: analyzer
+      execution:
+        type: retry
+        backoffs:
+          - 12
+          - 24
+      input:
+        mode: repair
+        paper_text: context.cleaned_paper_text
+        title: context.title
+        abstract: context.abstract
+        judge_feedback: context.judge_decision_raw
+        current_report: context.report_body
+      output_to_context:
+        report_body: output.content
+      on_error: analyzer_failed
+      transitions:
+        - to: mark_repair_attempted
+
+    mark_repair_attempted:
+      action: set_repair_attempted
+      transitions:
+        - to: judge_report
+
+    # ── Finalize ─────────────────────────────────────────────────────
+    prepend_frontmatter:
+      action: prepend_frontmatter_v3
+      transitions:
+        - to: save_result
+
+    save_result:
+      action: save_analyzer_result
+      transitions:
+        - to: done
+
+    done:
+      type: final
+      output:
+        title: context.title
+        arxiv_id: context.arxiv_id
+        quality_gate_decision: context.judge_decision
+        formatted_report: context.formatted_report
+        result_path: context.result_path
+
+    analyzer_failed:
+      action: mark_execution_failed
+      transitions:
+        - to: failed
+
+    failed:
+      type: final
+      output:
+        error: context.last_error
+        arxiv_id: context.arxiv_id
+        execution_id: context.execution_id
+        quality_gate_decision: context.judge_decision
+        report_body: context.report_body
+  lifecycle_hooks: v3-hooks
+metadata:
+  description: 'Analyzer pipeline: fan-out 6 sections in parallel with pinned KV cache, non-agentic assembly, judge, repair'
+  tags:
+    - analyzer
+    - parallel
+    - kv-cache

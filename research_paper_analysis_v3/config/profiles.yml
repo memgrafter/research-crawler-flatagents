@@ -1,0 +1,21 @@
+spec: flatprofile
+spec_version: 4.1.0
+data:
+  model_profiles:
+    reasoning:
+      provider: openai
+      name: local-model
+      base_url: http://192.168.1.21:8081/v1
+      api_key: llama.cpp
+      timeout: 600
+      max_tokens: 32000
+      disable_aiohttp_transport: true
+    structured:
+      provider: openai
+      name: local-model
+      base_url: http://192.168.1.21:8081/v1
+      api_key: llama.cpp
+      timeout: 600
+      max_tokens: 32000
+      disable_aiohttp_transport: true
+  default: reasoning
