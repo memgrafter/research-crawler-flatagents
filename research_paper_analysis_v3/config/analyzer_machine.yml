@@ -89,19 +89,27 @@ data:
         corpus_neighbors: context.corpus_neighbors
         reference_count: context.reference_count
       output_to_context:
-        fan_out_raw: output
+        narrative_lead: output.narrative_lead_machine.narrative_lead
+        author_uncertainties: output.narrative_lead_machine.author_uncertainties
+        method_results: output.method_results_machine.content
+        why_mechanism: output.why_mechanism_machine.content
+        reproduction: output.reproduction_machine.content
+        open_questions: output.open_questions_machine.content
+        limits_confidence: output.limits_confidence_machine.content
       on_error: analyzer_failed
       transitions:
         - to: unpack_fan_out_results
 
     # ── Unpack parallel results into context ──────────────────────────
     unpack_fan_out_results:
+      hooks: v3-hooks
       action: unpack_fan_out_results
       transitions:
         - to: assemble_report
 
     # ── Non-agentic assembly ─────────────────────────────────────────
     assemble_report:
+      hooks: v3-hooks
       action: assemble_report
       transitions:
         - to: judge_report
@@ -124,6 +132,7 @@ data:
 
     # ── Route based on judge decision ────────────────────────────────
     normalize_judge_decision:
+      hooks: v3-hooks
       action: normalize_judge_decision
       transitions:
         - condition: context.judge_decision == 'PASS'
@@ -147,7 +156,8 @@ data:
         paper_text: context.cleaned_paper_text
         title: context.title
         abstract: context.abstract
-        judge_feedback: context.judge_decision_raw
+        weak_sections: context.weak_sections
+        section_feedback: context.judge_feedback
         current_report: context.report_body
       output_to_context:
         report_body: output.content
@@ -156,17 +166,20 @@ data:
         - to: mark_repair_attempted
 
     mark_repair_attempted:
+      hooks: v3-hooks
       action: set_repair_attempted
       transitions:
         - to: judge_report
 
     # ── Finalize ─────────────────────────────────────────────────────
     prepend_frontmatter:
+      hooks: v3-hooks
       action: prepend_frontmatter_v3
       transitions:
         - to: save_result
 
     save_result:
+      hooks: v3-hooks
       action: save_analyzer_result
       transitions:
         - to: done
@@ -181,6 +194,7 @@ data:
         result_path: context.result_path
 
     analyzer_failed:
+      hooks: v3-hooks
       action: mark_execution_failed
       transitions:
         - to: failed

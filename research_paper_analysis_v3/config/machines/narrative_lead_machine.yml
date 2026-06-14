@@ -3,7 +3,7 @@ spec_version: 4.1.0
 data:
   name: narrative-lead
   agents:
-    analyzer: ../agents/analyzer.flatagent.yml
+    analyzer: ./analyzer.flatagent.yml
   context:
     title: input.title
     authors: input.authors
@@ -41,5 +41,6 @@ data:
     done:
       type: final
       output:
-        content: context.narrative_lead
+        narrative_lead: context.narrative_lead
+        author_uncertainties: context.author_uncertainties
   lifecycle_hooks: v3-hooks

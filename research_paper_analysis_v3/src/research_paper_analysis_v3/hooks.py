@@ -108,19 +108,22 @@ class V3Hooks(LoggingHooks):
     # ------------------------------------------------------------------
 
     async def _unpack_fan_out_results(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Extract individual section outputs from the parallel fan-out result.
+        """Validate that all fan-out sections are present in context.
 
-        The parallel `machine` block returns a dict keyed by state name.
-        Each state's output was stored via `output_to_context`, so the
-        sections are already in context — this action just logs and validates.
+        The parallel `machine` block routes each sub-machine's output to
+        context via `output_to_context`. This action just logs and validates.
         """
-        raw = context.get("fan_out_raw")
-        if isinstance(raw, dict):
-            for key, val in raw.items():
-                if val is not None:
-                    logger.debug("Fan-out section %s: ~%d tokens", key, _approx_tokens(val))
+        # Debug: log context values for the section keys
+        for key in ["narrative_lead", "author_uncertainties", "method_results",
+                    "why_mechanism", "reproduction", "open_questions", "limits_confidence"]:
+            val = context.get(key)
+            if val is None:
+                logger.warning("Context[%r] = None", key)
+            elif isinstance(val, str):
+                logger.info("Context[%r] = %d chars", key, len(val))
+            else:
+                logger.info("Context[%r] = type=%s val=%s", key, type(val).__name__, str(val)[:80])
 
-        # Log what we have in context
         sections = [
             ("narrative_lead", context.get("narrative_lead")),
             ("author_uncertainties", context.get("author_uncertainties")),
@@ -151,15 +154,17 @@ class V3Hooks(LoggingHooks):
             f"# {self._norm(context.get('title'))}",
         ]
 
-        # Narrative lead (includes Author Uncertainties if present)
+        # Narrative lead
         narrative = self._norm(context.get("narrative_lead"))
         if narrative:
             parts.append(narrative)
 
+        # Author Uncertainties — include if present and not already in narrative lead
         author_unc = self._norm(context.get("author_uncertainties"))
-        if author_unc and not narrative or narrative and "## Author Uncertainties" not in (narrative or ""):
-            if author_unc:
-                parts.append(f"\n{author_unc}")
+        if author_unc:
+            already_in_narrative = narrative and "## Author Uncertainties" in narrative
+            if not already_in_narrative:
+                parts.append(author_unc)
 
         # Method + Key Results
         method = self._norm(context.get("method_results"))
@@ -217,13 +222,19 @@ class V3Hooks(LoggingHooks):
             min_score = min(scores.values()) if scores else 4
 
             if num_missing >= 3:
-                context["judge_decision"] = "REJECT"
+                context["judge_decision"] = "FAIL"
             elif min_score >= 3:
                 context["judge_decision"] = "PASS"
             else:
                 context["judge_decision"] = "REPAIR"
 
-            logger.info("Judge decision: %s (scores: %s)", context["judge_decision"], scores)
+            # Compute weak sections for targeted repair
+            context["weak_sections"] = [
+                k for k, v in scores.items() if v < 3
+            ]
+
+            logger.info("Judge decision: %s (scores: %s, weak: %s)",
+                        context["judge_decision"], scores, context["weak_sections"])
             return context
         except (json.JSONDecodeError, ValueError, TypeError):
             pass

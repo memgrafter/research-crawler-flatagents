@@ -195,8 +195,12 @@ data:
     Paper text:
     {{ input.paper_text }}
 
-    Judge feedback:
-    {{ input.judge_feedback }}
+    Weak sections to fix: {{ input.weak_sections | join(', ') }}
+
+    Section-specific feedback:
+    {% for section, fb in (input.section_feedback | default({})).items() %}
+      - {{ section }}: {{ fb }}
+    {% endfor %}
 
     Current report:
     {{ input.current_report }}

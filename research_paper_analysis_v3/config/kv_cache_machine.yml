@@ -36,6 +36,7 @@ data:
         - to: mark_pinned
 
     mark_pinned:
+      hooks: v3-hooks
       action: mark_cache_pinned
       transitions:
         - to: done

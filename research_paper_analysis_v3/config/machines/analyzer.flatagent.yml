@@ -1,0 +1,7 @@
+spec: flatagent
+spec_version: 4.1.0
+data:
+  prompt: ../prompts/analyzer.prompt.yml
+  profile: reasoning
+metadata:
+  description: 'Analyzer agent for fan-out sub-machines (paths relative to config/machines/)'
