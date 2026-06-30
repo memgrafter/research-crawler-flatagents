@@ -16,6 +16,7 @@ Read a config file with per-phase allocation limits. Check active machines again
 Based on scrapped controller machine from epic §7 but simplified: no state machine, just a config reader + slot checker + launcher.
 
 Config:
+  ranking_slots: 40
   prep_slots: 5
   analyzer_slots: 25
 
