@@ -6,3 +6,11 @@ reports/
 **/__pycache__/
 
 .DS_Store
+
+# Data files
+*.db
+*.pdf
+data/papers/
+raw_lm_research_*/
+*_unknown_md_maybe_copies/
+{{ *
