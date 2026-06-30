@@ -23,11 +23,16 @@ Local GPU approach:
 - Store embeddings as .npy files keyed by arxiv_id + model name
 - Use a lightweight vector index (hnswlib) for similarity search across digests
 
+**Selected model: [jinaai/jina-embeddings-v5-text-nano](https://huggingface.co/jinaai/jina-embeddings-v5-text-nano)** — 1024-dim, served via llama.cpp on 3090Ti
+- GGUF source: [cstr/jina-v5-nano-GGUF](https://huggingface.co/cstr/jina-v5-nano-GGUF?show_file_info=jina-v5-nano-q8_0.gguf)
+- Quantization: Q8_0 (222MB) — good balance of quality/speed, fits easily in VRAM
+- Serve with `llama-server` using OpenAI-compatible `/v1/embeddings` endpoint
+
 Use cases:
 - Corpus-level deduplication before analysis
 - Semantic search across digests
 - Grouping similar papers for synthesis
 
 Considerations:
-- Need to confirm which GPU model (3090Ti) and what embedding model to run
-- llama.cpp embedding endpoint setup — need to verify existing serving supports this
+- Verify llama.cpp `/v1/embeddings` endpoint works alongside existing inference serving on localhost
+- Later: add persistent .npy storage + hnswlib index if corpus-level search is needed
