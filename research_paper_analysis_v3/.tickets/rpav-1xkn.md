@@ -1,7 +1,7 @@
 ---
 id: rpav-1xkn
 status: open
-deps: [rpav-dxor, rpav-b3m1]
+deps: [rpav-b3m1, rpav-e50g]
 links: []
 created: 2026-06-13T06:48:02Z
 type: feature
