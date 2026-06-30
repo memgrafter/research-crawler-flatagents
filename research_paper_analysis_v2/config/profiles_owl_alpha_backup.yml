@@ -1,0 +1,9 @@
+spec: flatprofile
+spec_version: 4.1.0
+data:
+  model_profiles:
+    structured:
+      name: openrouter/owl-alpha
+    reasoning:
+      name: openrouter/owl-alpha
+  default: structured

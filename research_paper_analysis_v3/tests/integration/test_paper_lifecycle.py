@@ -120,3 +120,105 @@ async def test_persistence_across_executions(paper_machine, test_db_path):
     assert row[0] == 0.85, f"fmr_score mismatch: {row[0]}"
 
     conn.close()
+
+
+@pytest.mark.asyncio
+async def test_v3_executions_save(test_db_path, test_project_root):
+    """Test that _save_analyzer_result writes to v3_executions."""
+    from research_paper_analysis_v3.hooks import V3Hooks
+
+    hooks = V3Hooks(project_root=test_project_root, db_path=test_db_path)
+
+    context = {
+        "execution_id": "2401.55555",
+        "arxiv_id": "2401.55555",
+        "title": "Executions Test",
+        "formatted_report": "# Test Report\n\nContent.",
+    }
+    result = await hooks._save_analyzer_result(context)
+
+    assert result["result_path"] is not None
+
+    # Check DB
+    conn = sqlite3.connect(test_db_path)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT * FROM v3_executions WHERE paper_id = ?",
+        ("2401.55555",),
+    ).fetchone()
+    assert row is not None, "No row in v3_executions"
+    assert row["status"] == "done", f"Status mismatch: {row['status']}"
+    assert row["result_path"] is not None
+    assert row["error"] is None
+    conn.close()
+
+
+@pytest.mark.asyncio
+async def test_v3_executions_fail(test_db_path, test_project_root):
+    """Test that _mark_execution_failed writes to v3_executions."""
+    from research_paper_analysis_v3.hooks import V3Hooks
+
+    hooks = V3Hooks(project_root=test_project_root, db_path=test_db_path)
+
+    context = {
+        "execution_id": "2401.66666",
+        "arxiv_id": "2401.66666",
+        "last_error": "HTTP 503: Service Unavailable",
+    }
+    result = await hooks._mark_execution_failed(context)
+
+    assert result["error"] == "HTTP 503: Service Unavailable"
+
+    # Check DB
+    conn = sqlite3.connect(test_db_path)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT * FROM v3_executions WHERE paper_id = ?",
+        ("2401.66666",),
+    ).fetchone()
+    assert row is not None, "No row in v3_executions"
+    assert row["status"] == "failed", f"Status mismatch: {row['status']}"
+    assert "503" in row["error"]
+    conn.close()
+
+
+@pytest.mark.asyncio
+async def test_v3_executions_queries(test_db_path, test_project_root):
+    """Test PaperManagerHooks v3_executions query methods."""
+    from research_paper_analysis_v3.hooks import V3Hooks
+    from research_paper_analysis_v3.paper_manager import PaperManagerHooks
+
+    hooks = V3Hooks(project_root=test_project_root, db_path=test_db_path)
+
+    # Save a successful execution
+    await hooks._save_analyzer_result(
+        {
+            "execution_id": "2401.77777",
+            "arxiv_id": "2401.77777",
+            "title": "Done Paper",
+            "formatted_report": "# Done\nContent.",
+        }
+    )
+    # Save a failed execution
+    await hooks._mark_execution_failed(
+        {
+            "execution_id": "2401.88888",
+            "arxiv_id": "2401.88888",
+            "last_error": "timeout",
+        }
+    )
+
+    # Query via PaperManagerHooks
+    pm = PaperManagerHooks(db_path=test_db_path)
+
+    done = pm.get_done_executions()
+    assert len(done) >= 1, "No done executions found"
+    assert any(e["paper_id"] == "2401.77777" for e in done)
+
+    failed = pm.get_failed_executions()
+    assert len(failed) >= 1, "No failed executions found"
+    assert any(e["paper_id"] == "2401.88888" for e in failed)
+
+    # Query by arbitrary status (should return empty for non-existent status)
+    pending = pm.get_executions_by_status("pending")
+    assert pending == []

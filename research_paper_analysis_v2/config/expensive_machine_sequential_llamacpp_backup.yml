@@ -1,0 +1,115 @@
+spec: flatmachine
+spec_version: 4.1.0
+data:
+  name: expensive-pipeline
+  persistence:
+    enabled: true
+    backend: local
+  settings:
+    max_steps: 25
+  context:
+    arxiv_id: input.arxiv_id
+    execution_id: input.execution_id
+    paper_id: input.paper_id
+    source_url: input.source_url
+    title: input.title
+    authors: input.authors
+    abstract: input.abstract
+    paper_text: input.paper_text
+    reference_count: input.reference_count
+    key_outcome: input.key_outcome
+    corpus_signals: input.corpus_signals
+    corpus_neighbors: input.corpus_neighbors
+    token_target_why: 500-800
+    token_target_reproduction: 220-380
+    token_target_open_questions: 120-220
+    why_hypotheses: null
+    reproduction_notes: null
+    open_questions: null
+  machines:
+    why_hypothesis_machine: ./why_hypothesis_machine.yml
+    reproduction_machine: ./reproduction_machine.yml
+    open_questions_machine: ./open_questions_machine.yml
+  states:
+    start:
+      type: initial
+      transitions:
+      - to: write_why_hypotheses
+      hooks: v2-hooks
+    write_why_hypotheses:
+      machine: why_hypothesis_machine
+      input:
+        title: context.title
+        key_outcome: context.key_outcome
+        abstract: context.abstract
+        paper_text: context.paper_text
+        reference_count: context.reference_count
+        corpus_signals: context.corpus_signals
+        corpus_neighbors: context.corpus_neighbors
+        token_target_why: context.token_target_why
+      output_to_context:
+        why_hypotheses: output.content
+      on_error: expensive_failed
+      transitions:
+      - to: write_reproduction_notes
+      hooks: v2-hooks
+    write_reproduction_notes:
+      machine: reproduction_machine
+      input:
+        title: context.title
+        key_outcome: context.key_outcome
+        abstract: context.abstract
+        paper_text: context.paper_text
+        reference_count: context.reference_count
+        token_target_reproduction: context.token_target_reproduction
+      output_to_context:
+        reproduction_notes: output.content
+      on_error: expensive_failed
+      transitions:
+      - to: write_open_questions
+      hooks: v2-hooks
+    write_open_questions:
+      machine: open_questions_machine
+      input:
+        title: context.title
+        key_outcome: context.key_outcome
+        abstract: context.abstract
+        paper_text: context.paper_text
+        token_target_open_questions: context.token_target_open_questions
+      output_to_context:
+        open_questions: output.content
+      on_error: expensive_failed
+      transitions:
+      - to: save_expensive_result
+      hooks: v2-hooks
+    save_expensive_result:
+      action: save_expensive_result
+      transitions:
+      - to: done
+      hooks: v2-hooks
+    done:
+      type: final
+      output:
+        arxiv_id: context.arxiv_id
+        execution_id: context.execution_id
+        why_hypotheses: context.why_hypotheses
+        reproduction_notes: context.reproduction_notes
+        open_questions: context.open_questions
+    expensive_failed:
+      action: mark_execution_failed
+      transitions:
+      - to: failed
+      hooks: v2-hooks
+    failed:
+      type: final
+      output:
+        error: context.last_error
+        arxiv_id: context.arxiv_id
+        execution_id: context.execution_id
+  lifecycle_hooks: v2-hooks
+metadata:
+  description: 'Expensive pipeline: sequential local llama.cpp calls (why, reproduction, open questions)'
+  tags:
+  - expensive-model
+  - sequential
+  - local-llamacpp

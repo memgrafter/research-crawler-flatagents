@@ -1,0 +1,9 @@
+spec: flatprofile
+spec_version: 4.1.0
+data:
+  model_profiles:
+    structured:
+      name: openrouter/arcee-ai/trinity-large-preview:free
+    reasoning:
+      name: openrouter/stepfun/step-3.5-flash:free
+  default: structured

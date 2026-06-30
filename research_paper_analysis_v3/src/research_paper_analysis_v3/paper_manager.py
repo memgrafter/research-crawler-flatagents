@@ -376,6 +376,33 @@ class PaperManagerHooks(LoggingHooks):
             raise ValueError(f"Unknown phase: {phase}")
 
     # ------------------------------------------------------------------
+    # v3_executions queries (scheduler-facing)
+    # ------------------------------------------------------------------
+
+    def get_executions_by_status(self, status: str) -> list:
+        """Get all executions with a given status from v3_executions."""
+        conn = _get_db_connection(self._db_path)
+        try:
+            rows = conn.execute(
+                "SELECT * FROM v3_executions WHERE status = ?",
+                (status,),
+            ).fetchall()
+            return [{k: row[k] for k in row.keys()} for row in rows]
+        except sqlite3.OperationalError:
+            # Table doesn't exist yet (no analyzer runs)
+            return []
+        finally:
+            conn.close()
+
+    def get_done_executions(self) -> list:
+        """Get all completed executions with result paths."""
+        return self.get_executions_by_status("done")
+
+    def get_failed_executions(self) -> list:
+        """Get all failed executions with error details."""
+        return self.get_executions_by_status("failed")
+
+    # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
 

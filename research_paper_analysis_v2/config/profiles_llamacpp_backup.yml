@@ -1,0 +1,27 @@
+spec: flatprofile
+spec_version: 4.1.0
+data:
+  model_profiles:
+    structured:
+      provider: openai
+      name: qwen3.6-28b-reap-iq3xxs-turbo3-35k
+      base_url: http://127.0.0.1:8081/v1
+      api_key: llama.cpp
+      timeout: 600
+      max_tokens: 12000
+      disable_aiohttp_transport: true
+      extra_body:
+        chat_template_kwargs:
+          enable_thinking: true
+    reasoning:
+      provider: openai
+      name: qwen3.6-28b-reap-iq3xxs-turbo3-35k
+      base_url: http://127.0.0.1:8081/v1
+      api_key: llama.cpp
+      timeout: 600
+      max_tokens: 12000
+      disable_aiohttp_transport: true
+      extra_body:
+        chat_template_kwargs:
+          enable_thinking: true
+  default: structured

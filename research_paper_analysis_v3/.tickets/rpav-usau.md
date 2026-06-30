@@ -1,6 +1,6 @@
 ---
 id: rpav-usau
-status: open
+status: in_progress
 deps: [rpav-b3m1]
 links: []
 created: 2026-06-13T07:01:34Z

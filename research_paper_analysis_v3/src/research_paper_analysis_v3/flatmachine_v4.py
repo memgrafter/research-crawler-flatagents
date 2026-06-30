@@ -20,9 +20,16 @@ def create_v3_hooks_registry(project_root: Path | None = None) -> HooksRegistry:
     """Create the FlatMachines v4 hooks registry required by config/*.yml."""
     project_root = project_root or Path(__file__).resolve().parent.parent.parent
     data_dir = project_root / "data"
+    db_path = os.environ.get(
+        "V3_PAPERS_DB_PATH",
+        str(data_dir / "v3_papers.sqlite"),
+    )
 
     registry = HooksRegistry()
-    registry.register(V3_HOOKS_NAME, lambda: V3Hooks(project_root=project_root, data_dir=data_dir))
+    registry.register(
+        V3_HOOKS_NAME,
+        lambda: V3Hooks(project_root=project_root, data_dir=data_dir, db_path=db_path),
+    )
     return registry
 
 

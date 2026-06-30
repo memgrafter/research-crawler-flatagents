@@ -1,0 +1,23 @@
+spec: flatprofile
+spec_version: 4.1.0
+data:
+  model_profiles:
+    structured:
+      provider: openai-codex
+      backend: codex
+      name: gpt-5.5
+      oauth:
+        provider: openai-codex
+        auth_file: ~/.agents/flatmachines/auth.json
+        originator: flatmachines
+      codex_reasoning_effort: high
+    reasoning:
+      provider: openai-codex
+      backend: codex
+      name: gpt-5.5
+      oauth:
+        provider: openai-codex
+        auth_file: ~/.agents/flatmachines/auth.json
+        originator: flatmachines
+      codex_reasoning_effort: high
+  default: structured

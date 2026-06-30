@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 import re
-import asyncio
+import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -58,12 +58,68 @@ def _approx_tokens(text: Optional[str]) -> int:
 # ---------------------------------------------------------------------------
 
 class V3Hooks(LoggingHooks):
-    """FlatMachine hooks for the v3 analyzer pipeline."""
+    """FlatMachine hooks for the v3 analyzer pipeline.
 
-    def __init__(self, project_root: Path, data_dir: Optional[Path] = None):
+    Writes execution outcomes to the v3_executions table in the shared
+    SQLite DB so the scheduler can query paper status without parsing
+    checkpoint blobs.
+    """
+
+    def __init__(
+        self,
+        project_root: Path,
+        data_dir: Optional[Path] = None,
+        db_path: Optional[str] = None,
+    ):
         super().__init__()
         self._project_root = project_root
         self._data_dir = data_dir or project_root / "data"
+        self._db_path = db_path or str(self._project_root / "data" / "v3_papers.sqlite")
+        self._schema_done = False
+
+    # ------------------------------------------------------------------
+    # DB helpers
+    # ------------------------------------------------------------------
+
+    def _ensure_v3_schema(self) -> None:
+        """Create the v3_executions table if it doesn't exist.
+
+        Tracks execution outcomes independently of FlatMachines checkpoints
+        so the scheduler can query paper status without parsing blobs.
+        """
+        if self._schema_done:
+            return
+        conn = sqlite3.connect(self._db_path)
+        try:
+            conn.execute("PRAGMA journal_mode = WAL")
+            conn.execute("PRAGMA synchronous = NORMAL")
+            conn.execute("PRAGMA busy_timeout = 10000")
+            conn.execute(
+                ""
+                "CREATE TABLE IF NOT EXISTS v3_executions ("
+                "    paper_id      TEXT PRIMARY KEY,"
+                "    status        TEXT NOT NULL DEFAULT 'pending',"
+                "    result_path   TEXT,"
+                "    error         TEXT,"
+                "    updated_at    TEXT NOT NULL"
+                ")"
+            )
+            conn.commit()
+            self._schema_done = True
+        except Exception:
+            logger.exception("Failed to ensure v3_executions schema")
+        finally:
+            conn.close()
+
+    def _db(self) -> sqlite3.Connection:
+        """Return a DB connection with the v3 schema ensured."""
+        self._ensure_v3_schema()
+        conn = sqlite3.connect(self._db_path)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
+        conn.execute("PRAGMA busy_timeout = 10000")
+        return conn
 
     # ------------------------------------------------------------------
     # Action router
@@ -322,7 +378,7 @@ class V3Hooks(LoggingHooks):
     # ------------------------------------------------------------------
 
     async def _save_analyzer_result(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Write final digest to disk."""
+        """Write final digest to disk and update v3_executions DB."""
         execution_id = self._norm(context.get("execution_id"))
         formatted_report = context.get("formatted_report")
         title = self._norm(context.get("title"))
@@ -344,6 +400,30 @@ class V3Hooks(LoggingHooks):
                 logger.exception("Failed writing digest file")
                 context["last_error"] = str(exc)
 
+        # Update v3_executions DB with outcome
+        paper_id = arxiv_id or execution_id
+        if paper_id:
+            try:
+                conn = self._db()
+                conn.execute(
+                    """
+                    INSERT INTO v3_executions (paper_id, status, result_path, updated_at)
+                    VALUES (?, 'done', ?, ?)
+                    ON CONFLICT(paper_id) DO UPDATE SET
+                        status = 'done',
+                        result_path = excluded.result_path,
+                        error = NULL,
+                        updated_at = excluded.updated_at
+                    """,
+                    (paper_id, result_path, _utc_now_iso()),
+                )
+                conn.commit()
+                logger.info("v3_executions: %s → done", paper_id)
+            except Exception:
+                logger.exception("Failed to update v3_executions for %s", paper_id)
+            finally:
+                conn.close()
+
         context["result_path"] = result_path
         return context
 
@@ -358,6 +438,29 @@ class V3Hooks(LoggingHooks):
 
         logger.error("Execution %s (arXiv: %s) failed: %s",
                      execution_id, arxiv_id, error_str)
+
+        # Update v3_executions DB with failure
+        paper_id = arxiv_id or execution_id
+        if paper_id:
+            try:
+                conn = self._db()
+                conn.execute(
+                    """
+                    INSERT INTO v3_executions (paper_id, status, error, updated_at)
+                    VALUES (?, 'failed', ?, ?)
+                    ON CONFLICT(paper_id) DO UPDATE SET
+                        status = 'failed',
+                        error = excluded.error,
+                        updated_at = excluded.updated_at
+                    """,
+                    (paper_id, error_str, _utc_now_iso()),
+                )
+                conn.commit()
+                logger.info("v3_executions: %s → failed", paper_id)
+            except Exception:
+                logger.exception("Failed to update v3_executions for %s", paper_id)
+            finally:
+                conn.close()
 
         context["error"] = error_str
         return context

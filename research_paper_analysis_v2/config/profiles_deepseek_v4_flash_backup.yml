@@ -1,0 +1,13 @@
+spec: flatprofile
+spec_version: 4.1.0
+data:
+  model_profiles:
+    structured:
+      name: openrouter/deepseek/deepseek-v4-flash
+      timeout: 300
+      max_tokens: 30000
+    reasoning:
+      name: openrouter/deepseek/deepseek-v4-flash
+      timeout: 300
+      max_tokens: 30000
+  default: structured
