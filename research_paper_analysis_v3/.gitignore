@@ -3,3 +3,4 @@
 data/
 .locks/
 .checkpoints/
+.env.local
