@@ -5,7 +5,7 @@ data:
     reasoning:
       provider: openai
       name: local-model
-      base_url: http://192.168.1.21:8081/v1
+      base_url: http://localhost:8081/v1
       api_key: llama.cpp
       timeout: 600
       max_tokens: 32000
@@ -13,7 +13,7 @@ data:
     structured:
       provider: openai
       name: local-model
-      base_url: http://192.168.1.21:8081/v1
+      base_url: http://localhost:8081/v1
       api_key: llama.cpp
       timeout: 600
       max_tokens: 32000

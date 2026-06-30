@@ -1,0 +1,7 @@
+# Invoker slot configuration
+# Per-phase concurrency limits for the invoker
+
+prep_slots: 5
+analyzer_slots: 25
+ranking_slots: 40
+
