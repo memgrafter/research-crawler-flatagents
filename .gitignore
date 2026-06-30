@@ -13,4 +13,4 @@ reports/
 data/papers/
 raw_lm_research_*/
 *_unknown_md_maybe_copies/
-{{ *
+multi_paper_synthesizer/data/papers/
