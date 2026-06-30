@@ -13,6 +13,7 @@ data:
     abstract: "{{ input.abstract }}"
     pdf_path: null
     docling_json_path: null
+    cleaned_paper_text: null
   states:
     start:
       type: initial
@@ -33,6 +34,14 @@ data:
       action: extract_docling
       on_error: prep_failed
       transitions:
+        - to: clean_paper
+
+    # ── Extract clean text from docling JSON ───────────────────────────
+    clean_paper:
+      hooks: v3-hooks
+      action: clean_paper
+      on_error: prep_failed
+      transitions:
         - to: save_prep_result
 
     # ── Write prep outcome to DB ───────────────────────────────────────
@@ -50,6 +59,7 @@ data:
         arxiv_id: context.arxiv_id
         pdf_path: context.pdf_path
         docling_json_path: context.docling_json_path
+        cleaned_paper_text: context.cleaned_paper_text
 
     prep_failed:
       hooks: v3-hooks

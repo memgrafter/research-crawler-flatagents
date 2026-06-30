@@ -248,3 +248,38 @@ async def test_v3_executions_prep(test_db_path, test_project_root):
     assert row["status"] == "prepped", f"Status mismatch: {row['status']}"
     assert "papers_docling_json" in row["result_path"]
     conn.close()
+
+
+@pytest.mark.asyncio
+async def test_clean_paper_strips_references(test_db_path, test_project_root):
+    """Test that _clean_paper strips the References section."""
+    from research_paper_analysis_v3.hooks import V3Hooks
+
+    # Create a minimal docling JSON with references
+    docling_dir = test_project_root / "data" / "papers_docling_json"
+    docling_dir.mkdir(parents=True, exist_ok=True)
+    json_path = docling_dir / "2401.test.json"
+    import json as json_module
+
+    doc_data = {
+        "texts": [
+            {"text": "Attention Is All You Need"},
+            {"text": "The transformer architecture..."},
+            {"text": "References"},
+            {"text": "[1] Some citation"},
+            {"text": "[2] Another citation"},
+        ]
+    }
+    json_path.write_text(json_module.dumps(doc_data))
+
+    hooks = V3Hooks(project_root=test_project_root, db_path=test_db_path)
+    context = {
+        "docling_json_path": str(json_path),
+    }
+    result = await hooks._clean_paper(context)
+
+    cleaned = result.get("cleaned_paper_text", "")
+    assert "attention" in cleaned.lower()
+    assert "transformer" in cleaned.lower()
+    assert "references" not in cleaned.lower(), f"References not stripped: {cleaned}"
+    assert "citation" not in cleaned.lower(), f"Citations not stripped: {cleaned}"

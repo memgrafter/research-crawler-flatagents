@@ -5,6 +5,7 @@ Implements custom FlatMachine actions for the analyzer pipeline:
 Prep actions (prep_machine.yml):
 - download_pdf              — 3-tier PDF download (GCS → export.arxiv.org → arxiv.org)
 - extract_docling           — convert PDF to DoclingDocument JSON
+- clean_paper               — extract text from docling JSON, strip references, clean artifacts
 - save_prep_result          — write prep outcome to v3_executions DB
 
 KV cache actions (kv_cache_machine.yml):
@@ -139,6 +140,7 @@ class V3Hooks(LoggingHooks):
             # Prep actions
             "download_pdf": self._download_pdf,
             "extract_docling": self._extract_docling,
+            "clean_paper": self._clean_paper,
             "save_prep_result": self._save_prep_result,
             # KV cache
             "mark_cache_pinned": self._mark_cache_pinned,
@@ -343,6 +345,88 @@ class V3Hooks(LoggingHooks):
         logger.info("Docling conversion done: %s (%d bytes)", json_path, json_path.stat().st_size)
         context["docling_json_path"] = str(json_path)
         return context
+
+    async def _clean_paper(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract clean text from docling JSON for the analyzer.
+
+        Reads the docling JSON, extracts text from the texts array,
+        strips the References section, and cleans formatting artifacts.
+        Sets cleaned_paper_text in context.
+        """
+        docling_json_path = self._norm(context.get("docling_json_path"))
+        if not docling_json_path:
+            raise ValueError("No docling_json_path in context for clean_paper")
+
+        json_path = Path(docling_json_path)
+        if not json_path.exists():
+            raise FileNotFoundError(f"Docling JSON not found: {json_path}")
+
+        # Read and parse docling JSON
+        with open(json_path) as f:
+            doc_data = json.load(f)
+
+        # Extract text from texts array
+        texts = doc_data.get("texts", [])
+        if not isinstance(texts, list):
+            raise ValueError("Unexpected docling format: no 'texts' array")
+
+        parts = []
+        for item in texts:
+            if isinstance(item, dict) and "text" in item:
+                text = item["text"]
+                if isinstance(text, str) and text.strip():
+                    parts.append(text)
+
+        raw_text = "\n".join(parts)
+
+        # Strip References section and everything after it
+        clean_text = self._strip_references(raw_text)
+
+        # Clean formatting artifacts
+        clean_text = self._clean_artifacts(clean_text)
+
+        logger.info(
+            "Cleaned paper text: %d chars (%.1f%% of raw %d chars)",
+            len(clean_text),
+            100 * len(clean_text) / max(1, len(raw_text)),
+            len(raw_text),
+        )
+        context["cleaned_paper_text"] = clean_text
+        return context
+
+    @staticmethod
+    def _strip_references(text: str) -> str:
+        """Strip the References section and everything after it."""
+        # Look for common reference section headers (with or without markdown)
+        ref_patterns = [
+            r"^\s*##?\s*References\b",
+            r"^\s*##?\s*Bibliography\b",
+            r"^\s*##?\s*Works Cited\b",
+            r"^\s*##?\s*Reference List\b",
+            r"^\s*References\s*$",  # bare "References" on its own line
+            r"^\s*Bibliography\s*$",  # bare "Bibliography" on its own line
+        ]
+        for pattern in ref_patterns:
+            match = re.search(pattern, text, re.MULTILINE | re.IGNORECASE)
+            if match:
+                # Keep everything before the references section
+                text = text[:match.start()].rstrip()
+                break
+        return text
+
+    @staticmethod
+    def _clean_artifacts(text: str) -> str:
+        """Clean formatting artifacts from extracted text."""
+        # Remove footnote markers like ∗, †, 1, etc. at end of lines
+        text = re.sub(r'[∗†‡§¶]+\s*$', '', text, flags=re.MULTILINE)
+        # Remove standalone "footnotemark:" lines
+        text = re.sub(r'^\s*footnotemark:\s*\d*\s*$', '', text, flags=re.MULTILINE)
+        # Collapse multiple blank lines
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        # Strip leading/trailing whitespace from each line
+        lines = [line.strip() for line in text.split('\n')]
+        text = '\n'.join(lines)
+        return text.strip()
 
     async def _save_prep_result(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Write prep outcome to v3_executions DB.

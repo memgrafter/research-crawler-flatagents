@@ -1,6 +1,6 @@
 ---
 id: rpav-qqed
-status: open
+status: in_progress
 deps: [rpav-dxor]
 links: [rpav-8sq6, rpav-e50g, rpav-eew6, rpav-dxor]
 created: 2026-06-30T02:42:43Z

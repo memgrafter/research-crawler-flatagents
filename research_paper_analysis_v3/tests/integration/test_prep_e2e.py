@@ -98,6 +98,15 @@ async def test_prep_e2e_attention_is_all_you_need(test_project_root, test_db_pat
     assert "papers_docling_json" in row["result_path"], f"Unexpected result_path: {row['result_path']}"
     conn.close()
 
+    # Verify cleaned_paper_text was produced
+    cleaned = result.get("cleaned_paper_text", "")
+    assert len(cleaned) > 1000, f"Cleaned text too short: {len(cleaned)} chars"
+    assert "attention" in cleaned.lower(), "Expected 'attention' in cleaned text"
+    assert "transformer" in cleaned.lower(), "Expected 'transformer' in cleaned text"
+    # References section should be stripped
+    import re
+    assert not re.search(r"References", cleaned, re.I), "References section not stripped"
+
 
 def _extract_text_from_docling(doc_data: dict) -> str:
     """Extract text content from a DoclingDocument dict.
