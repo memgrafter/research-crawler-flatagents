@@ -1,0 +1,21 @@
+spec: flatmachine
+spec_version: 4.1.0
+data:
+  name: mock-digest-machine
+  context:
+    paper_id: "mock-paper"
+    digest_path: "data/digests/mock-paper.md"
+    phase: "done"
+    digest_complete: true
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: done
+
+    done:
+      type: final
+      output:
+        digest_path: "data/digests/mock-paper.md"
+metadata:
+  description: "Mock digest machine — returns fake digest path"

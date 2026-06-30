@@ -1,0 +1,118 @@
+spec: flatmachine
+spec_version: 4.1.0
+data:
+  name: test-paper-orchestrator
+  persistence:
+    enabled: false
+  context:
+    paper_id: "{{ input.paper_id }}"
+    title: "{{ input.title }}"
+    abstract: "{{ input.abstract }}"
+    phase: "pending"
+    ranking_complete: false
+    extraction_complete: false
+    digest_complete: false
+    fmr_score: null
+    docling_json_path: null
+    digest_path: null
+  machines:
+    ranking_machine: ./machines/ranking_machine.yml
+    extraction_machine: ./machines/extraction_machine.yml
+    digest_machine: ./machines/digest_machine.yml
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: launch_ranking
+
+    # ── Launch ranking sub-machine ────────────────────────────────────
+    launch_ranking:
+      machine: ranking_machine
+      input:
+        paper_id: context.paper_id
+      output_to_context:
+        fmr_score: output.fmr_score
+      on_error: phase_failed
+      transitions:
+        - to: after_ranking
+
+    # ── After ranking — check threshold and mark complete ─────────────
+    after_ranking:
+      hooks: mock-ranking
+      action: after_ranking
+      transitions:
+        # fmr_score >= 0.6 → continue pipeline
+        - condition: context.fmr_score >= 0.6
+          to: launch_extraction
+        # Below threshold → skip to done (paper not worth processing)
+        - to: done_low_score
+
+    # ── Launch extraction sub-machine ─────────────────────────────────
+    launch_extraction:
+      machine: extraction_machine
+      input:
+        paper_id: context.paper_id
+      output_to_context:
+        docling_json_path: output.docling_json_path
+      on_error: phase_failed
+      transitions:
+        - to: after_extraction
+
+    # ── After extraction — mark complete and launch digest ────────────
+    after_extraction:
+      hooks: mock-extraction
+      action: after_extraction
+      transitions:
+        - to: launch_digest
+
+    # ── Launch digest sub-machine ─────────────────────────────────────
+    launch_digest:
+      machine: digest_machine
+      input:
+        paper_id: context.paper_id
+      output_to_context:
+        digest_path: output.digest_path
+      on_error: phase_failed
+      transitions:
+        - to: after_digest
+
+    # ── After digest — mark complete and finish ───────────────────────
+    after_digest:
+      hooks: mock-digest
+      action: after_digest
+      transitions:
+        - to: done
+
+    # ── Phase failed → mark and exit ──────────────────────────────────
+    phase_failed:
+      hooks: paper-manager
+      action: mark_phase_failed
+      transitions:
+        - to: failed
+
+    # ── Final states ─────────────────────────────────────────────────
+    done:
+      type: final
+      output:
+        paper_id: context.paper_id
+        fmr_score: context.fmr_score
+        docling_json_path: context.docling_json_path
+        digest_path: context.digest_path
+        success: true
+
+    done_low_score:
+      type: final
+      output:
+        paper_id: context.paper_id
+        fmr_score: context.fmr_score
+        skipped: true
+        reason: "fmr_score below threshold"
+
+    failed:
+      type: final
+      output:
+        paper_id: context.paper_id
+        error: context.last_error
+        phase: context.phase
+metadata:
+  description: "Test paper orchestrator with ranking phase for end-to-end testing"

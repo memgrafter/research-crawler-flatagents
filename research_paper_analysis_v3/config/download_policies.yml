@@ -1,0 +1,22 @@
+# Download rate limiting policies for v3 paper manager.
+# Stored as flatmachine data object — can be updated without restarting machines.
+
+sources:
+  arxiv_export:
+    rate_limit: 429
+    backoff_schedule: [60, 300, 900, 3600]
+    max_retries: 4
+    queue_zero_on_429: true
+    zero_queue_duration: 3600
+
+  arxiv_api:
+    rate_limit: 429
+    backoff_schedule: [60, 300, 900, 3600]
+    max_retries: 4
+    queue_zero_on_429: true
+    zero_queue_duration: 3600
+
+  kaggle_gcs:
+    rate_limit: none
+    backoff_schedule: [5, 15, 45, 120]
+    max_retries: 4

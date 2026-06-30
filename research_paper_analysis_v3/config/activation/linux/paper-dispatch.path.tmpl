@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch paper trigger file
+
+[Path]
+PathChanged={{TRIGGER_FILE}}
+Unit=paper-dispatch.service
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,7 @@
+[Unit]
+Description=Paper machine dispatch once
+
+[Service]
+Type=oneshot
+WorkingDirectory={{WORKDIR}}
+ExecStart={{PYTHON}} -m flatmachines.dispatch_signals --once --resumer config-store --db-path {{DB_PATH}}

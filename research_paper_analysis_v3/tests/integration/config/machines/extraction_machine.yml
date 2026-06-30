@@ -1,0 +1,21 @@
+spec: flatmachine
+spec_version: 4.1.0
+data:
+  name: mock-extraction-machine
+  context:
+    paper_id: "mock-paper"
+    docling_json_path: "data/papers_docling_json/mock-paper.json"
+    phase: "extracted"
+    extraction_complete: true
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: done
+
+    done:
+      type: final
+      output:
+        docling_json_path: "data/papers_docling_json/mock-paper.json"
+metadata:
+  description: "Mock extraction machine — returns fake docling path"

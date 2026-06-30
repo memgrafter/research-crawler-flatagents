@@ -1,0 +1,21 @@
+spec: flatmachine
+spec_version: 4.1.0
+data:
+  name: mock-ranking-machine
+  context:
+    paper_id: "{{ input.paper_id }}"
+    fmr_score: 0.85
+    phase: "ranked"
+    ranking_complete: true
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: done
+
+    done:
+      type: final
+      output:
+        fmr_score: 0.85
+metadata:
+  description: "Mock ranking machine — always assigns fmr_score = 0.85"

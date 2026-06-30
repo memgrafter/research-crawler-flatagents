@@ -1,0 +1,111 @@
+spec: flatmachine
+spec_version: 4.1.0
+data:
+  name: paper-orchestrator
+  persistence:
+    enabled: true
+    backend: sqlite
+    db_path: "data/v3_papers.sqlite"
+  context:
+    paper_id: "{{ input.paper_id }}"
+    title: "{{ input.title }}"
+    abstract: "{{ input.abstract }}"
+    phase: "pending"
+    ranking_complete: false
+    extraction_complete: false
+    digest_complete: false
+    fmr_score: null
+    docling_json_path: null
+    digest_path: null
+  machines:
+    ranking_machine: ./machines/ranking_machine.yml
+    extraction_machine: ./machines/extraction_machine.yml
+    digest_machine: ./machines/digest_machine.yml
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: check_phase
+
+    # ── Check phase status and transition ─────────────────────────────
+    check_phase:
+      hooks: paper-manager
+      action: check_current_phase_status
+      transitions:
+        # Ranking complete → launch extraction
+        - condition: context.phase == 'ranked' and context.ranking_complete
+          to: launch_extraction
+
+        # Extraction complete → launch digest
+        - condition: context.phase == 'extracted' and context.extraction_complete
+          to: launch_digest
+
+        # Nothing ready yet → park on signal
+        - to: wait_for_wakeup
+
+    # ── Park on wait_for until sub-machine signals completion ─────────
+    wait_for_wakeup:
+      wait_for: "paper/{{ context.paper_id }}"
+      timeout: 86400  # 24h max wait
+      output_to_context:
+        phase_complete: "{{ output.phase_complete }}"
+        result_path: "{{ output.result_path }}"
+      transitions:
+        - condition: context.phase == 'ranked' and context.phase_complete
+          to: launch_extraction
+        - condition: context.phase == 'extracted' and context.phase_complete
+          to: launch_digest
+        - to: done  # Digest complete → final
+
+    # ── Launch extraction sub-machine ─────────────────────────────────
+    launch_extraction:
+      machine: extraction_machine
+      input:
+        paper_id: context.paper_id
+        title: context.title
+        abstract: context.abstract
+      output_to_context:
+        docling_json_path: output.docling_json_path
+      on_error: phase_failed
+      transitions:
+        - to: check_phase
+
+    # ── Launch digest sub-machine ─────────────────────────────────────
+    launch_digest:
+      machine: digest_machine
+      input:
+        paper_id: context.paper_id
+        title: context.title
+        abstract: context.abstract
+        docling_json_path: context.docling_json_path
+      output_to_context:
+        digest_path: output.digest_path
+      on_error: phase_failed
+      transitions:
+        - to: done
+
+    # ── Phase failed → mark and exit ──────────────────────────────────
+    phase_failed:
+      hooks: paper-manager
+      action: mark_phase_failed
+      transitions:
+        - to: failed
+
+    # ── Final states ──────────────────────────────────────────────────
+    done:
+      type: final
+      output:
+        paper_id: context.paper_id
+        fmr_score: context.fmr_score
+        docling_json_path: context.docling_json_path
+        digest_path: context.digest_path
+
+    failed:
+      type: final
+      output:
+        paper_id: context.paper_id
+        error: context.last_error
+        phase: context.phase
+metadata:
+  description: "Paper orchestrator: parks on wait_for, signals via send_and_notify, OS-activated dispatcher"
+  tags: [paper-machine, listener-os, orchestration]
