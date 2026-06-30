@@ -2,6 +2,10 @@
 
 Implements custom FlatMachine actions for the analyzer pipeline:
 
+Prep actions (prep_machine.yml):
+- download_pdf              — 3-tier PDF download (GCS → export.arxiv.org → arxiv.org)
+- extract_docling           — convert PDF to DoclingDocument JSON
+
 KV cache actions (kv_cache_machine.yml):
 - warmup_kv_cache           — warm up KV cache with paper text (later: pin via proxy)
 
@@ -17,13 +21,17 @@ Analyzer actions (analyzer_machine.yml):
 
 from __future__ import annotations
 
+import asyncio
 import json
+import os
 import re
+import shutil
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
+import httpx
 import yaml
 
 from flatmachines import LoggingHooks
@@ -127,6 +135,9 @@ class V3Hooks(LoggingHooks):
 
     async def on_action(self, state_name: str, action_name: str, context: Dict[str, Any]) -> Dict[str, Any]:
         handlers = {
+            # Prep actions
+            "download_pdf": self._download_pdf,
+            "extract_docling": self._extract_docling,
             # KV cache
             "mark_cache_pinned": self._mark_cache_pinned,
             # Analyzer actions
@@ -142,6 +153,194 @@ class V3Hooks(LoggingHooks):
         if handler:
             return await handler(context)
         return await super().on_action(state_name, action_name, context)
+
+    # ------------------------------------------------------------------
+    # Prep actions: download_pdf, extract_docling
+    # ------------------------------------------------------------------
+
+    async def _download_pdf(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Download PDF via 3-tier strategy: GCS → export.arxiv.org → arxiv.org.
+
+        Sets context[pdf_path] on success. Raises on permanent failure.
+        """
+        arxiv_id = self._norm(context.get("arxiv_id") or context.get("paper_id"))
+        if not arxiv_id:
+            raise ValueError("No arxiv_id in context for download_pdf")
+
+        safe_id = arxiv_id.replace("/", "_")
+        pdf_path = self._data_dir / f"{safe_id}.pdf"
+
+        # Fast path: skip if PDF already exists and is non-empty
+        if pdf_path.exists() and pdf_path.stat().st_size > 0:
+            logger.info("PDF already exists: %s", pdf_path)
+            context["pdf_path"] = str(pdf_path)
+            return context
+
+        # Tier 1: GCS via gsutil (Kaggle mirror, fastest for older papers)
+        try:
+            result = await self._download_pdf_from_gs(arxiv_id, pdf_path)
+            context.update(result)
+            return context
+        except FileNotFoundError:
+            raise  # gsutil missing is a config error, don't hide it
+        except Exception as gs_exc:
+            logger.warning("GCS download failed for %s: %s", arxiv_id, gs_exc)
+
+        # Tier 2: export.arxiv.org (most reliable for recent papers)
+        try:
+            return await self._download_pdf_from_http(
+                context, arxiv_id, pdf_path,
+                f"https://export.arxiv.org/pdf/{arxiv_id}",
+            )
+        except Exception as exc2:
+            logger.warning("export.arxiv.org download failed for %s: %s", arxiv_id, exc2)
+
+        # Tier 3: standard arxiv.org (last resort)
+        return await self._download_pdf_from_http(
+            context, arxiv_id, pdf_path,
+            f"https://arxiv.org/pdf/{arxiv_id}",
+        )
+
+    async def _download_pdf_from_gs(self, arxiv_id: str, pdf_path: Path) -> Dict[str, Any]:
+        """Download PDF from Kaggle/GCS via gsutil."""
+        gsutil_bin = os.environ.get("RPA_V3_GSUTIL_BIN") or shutil.which("gsutil")
+        if not gsutil_bin or not Path(gsutil_bin).exists():
+            raise FileNotFoundError(f"gsutil not found at {gsutil_bin}")
+
+        month = arxiv_id[:4]
+        prefixes = os.environ.get(
+            "RPA_V3_GCS_PDF_PREFIXES",
+            "gs://arxiv-dataset/arxiv/pdf,gs://arxiv-dataset/arxiv/arxiv/pdf",
+        ).split(",")
+
+        for prefix in prefixes:
+            gs_uri = f"{prefix.strip().rstrip('/')}/{month}/{arxiv_id}v1.pdf"
+            logger.info("Downloading via gsutil: %s", gs_uri)
+            proc = await asyncio.create_subprocess_exec(
+                gsutil_bin, "cp", gs_uri, str(pdf_path),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await proc.communicate()
+            if proc.returncode == 0 and pdf_path.exists() and pdf_path.stat().st_size > 0:
+                logger.info("GCS download done: %s (%d bytes)", arxiv_id, pdf_path.stat().st_size)
+                return {"pdf_path": str(pdf_path)}
+            # Clean up partial file
+            try:
+                pdf_path.unlink()
+            except FileNotFoundError:
+                pass
+            logger.debug("GCS attempt failed: %s rc=%d %s", gs_uri, proc.returncode, stderr[:200])
+
+        raise RuntimeError(f"GCS download failed for all prefixes for {arxiv_id}")
+
+    async def _download_pdf_from_http(
+        self, context: Dict[str, Any], arxiv_id: str, pdf_path: Path, url: str,
+    ) -> Dict[str, Any]:
+        """Download PDF from HTTP URL with retries."""
+        retry_delays = [2, 8, 25]
+        attempts = 1 + len(retry_delays)
+
+        async with httpx.AsyncClient(follow_redirects=True, timeout=60.0) as client:
+            for attempt in range(1, attempts + 1):
+                try:
+                    logger.info("Downloading PDF: %s (attempt %d/%d)", url, attempt, attempts)
+                    resp = await client.get(url)
+                    resp.raise_for_status()
+                    pdf_path.write_bytes(resp.content)
+                    logger.info(
+                        "HTTP download done: %s (%d bytes, attempt %d)",
+                        arxiv_id, len(resp.content), attempt,
+                    )
+                    context["pdf_path"] = str(pdf_path)
+                    return context
+                except asyncio.CancelledError:
+                    raise
+                except httpx.HTTPStatusError as exc:
+                    status = exc.response.status_code if exc.response is not None else 0
+                    if status == 404:
+                        raise RuntimeError(f"PDF not found (HTTP 404): {url}") from None
+                    if attempt < attempts:
+                        await asyncio.sleep(retry_delays[attempt - 1])
+                        continue
+                    raise
+                except Exception:
+                    if attempt < attempts:
+                        await asyncio.sleep(retry_delays[attempt - 1])
+                        continue
+                    raise
+
+        raise RuntimeError(f"Exhausted all download attempts for {arxiv_id}")
+
+    async def _extract_docling(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert PDF to DoclingDocument JSON using docling.
+
+        Writes to data/papers_docling_json/{arxiv_id}.json and sets
+        context[docling_json_path].
+        """
+        arxiv_id = self._norm(context.get("arxiv_id") or context.get("paper_id"))
+        if not arxiv_id:
+            raise ValueError("No arxiv_id in context for extract_docling")
+
+        pdf_path_str = self._norm(context.get("pdf_path"))
+        if not pdf_path_str:
+            safe_id = arxiv_id.replace("/", "_")
+            pdf_path_str = str(self._data_dir / f"{safe_id}.pdf")
+
+        pdf_path = Path(pdf_path_str)
+        if not pdf_path.exists():
+            raise FileNotFoundError(f"PDF not found: {pdf_path}")
+
+        safe_id = arxiv_id.replace("/", "_")
+        docling_dir = self._data_dir / "papers_docling_json"
+        docling_dir.mkdir(parents=True, exist_ok=True)
+        json_path = docling_dir / f"{safe_id}.json"
+
+        # Fast path: skip if already extracted
+        if json_path.exists() and json_path.stat().st_size > 0:
+            logger.info("Docling JSON already exists: %s", json_path)
+            context["docling_json_path"] = str(json_path)
+            return context
+
+        # Convert PDF via docling with lightweight pipeline (no OCR, no table structure)
+        try:
+            from docling.document_converter import DocumentConverter, PdfFormatOption
+            from docling.datamodel.base_models import InputFormat
+            from docling.datamodel.pipeline_options import PdfPipelineOptions
+        except ImportError as exc:
+            raise RuntimeError("docling not installed: pip install docling") from exc
+
+        # Lightweight pipeline: disable OCR, table structure, and other expensive features
+        # for faster conversion. arXiv papers have clean text extraction.
+        pipeline_options = PdfPipelineOptions(
+            do_ocr=False,
+            do_table_structure=False,
+            do_picture_classification=False,
+            do_picture_description=False,
+            do_chart_extraction=False,
+            do_code_enrichment=False,
+            do_formula_enrichment=False,
+            force_backend_text=True,  # Use backend text directly
+        )
+
+        logger.info("Converting PDF to Docling JSON: %s", pdf_path)
+        converter = DocumentConverter(
+            format_options={
+                InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options),
+            }
+        )
+        result = converter.convert(str(pdf_path))
+
+        # Write the full DoclingDocument as JSON (ELT pattern)
+        doc_dict = result.document.export_to_dict()
+        json_path.write_text(
+            json.dumps(doc_dict, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        logger.info("Docling conversion done: %s (%d bytes)", json_path, json_path.stat().st_size)
+        context["docling_json_path"] = str(json_path)
+        return context
 
     # ------------------------------------------------------------------
     # KV cache warmup

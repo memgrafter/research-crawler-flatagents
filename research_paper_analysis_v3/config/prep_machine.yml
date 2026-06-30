@@ -1,0 +1,59 @@
+spec: flatmachine
+spec_version: 4.1.0
+data:
+  name: prep-pipeline
+  persistence:
+    enabled: true
+    backend: sqlite
+    db_path: "data/v3_papers.sqlite"
+  context:
+    arxiv_id: "{{ input.arxiv_id }}"
+    paper_id: "{{ input.paper_id }}"
+    title: "{{ input.title }}"
+    abstract: "{{ input.abstract }}"
+    pdf_path: null
+    docling_json_path: null
+  states:
+    start:
+      type: initial
+      transitions:
+        - to: download_pdf
+
+    # ── Download PDF via 3-tier strategy ───────────────────────────────
+    download_pdf:
+      hooks: v3-hooks
+      action: download_pdf
+      on_error: prep_failed
+      transitions:
+        - to: extract_docling
+
+    # ── Convert PDF to Docling JSON ────────────────────────────────────
+    extract_docling:
+      hooks: v3-hooks
+      action: extract_docling
+      on_error: prep_failed
+      transitions:
+        - to: done
+
+    # ── Final states ───────────────────────────────────────────────────
+    done:
+      type: final
+      output:
+        arxiv_id: context.arxiv_id
+        pdf_path: context.pdf_path
+        docling_json_path: context.docling_json_path
+
+    prep_failed:
+      hooks: v3-hooks
+      action: mark_execution_failed
+      transitions:
+        - to: failed
+
+    failed:
+      type: final
+      output:
+        error: context.last_error
+        arxiv_id: context.arxiv_id
+metadata:
+  description: "Prep pipeline: download PDF → convert with Docling"
+  tags: [prep, download, docling]
