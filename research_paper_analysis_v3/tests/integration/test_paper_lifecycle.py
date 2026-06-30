@@ -222,3 +222,29 @@ async def test_v3_executions_queries(test_db_path, test_project_root):
     # Query by arbitrary status (should return empty for non-existent status)
     pending = pm.get_executions_by_status("pending")
     assert pending == []
+
+
+@pytest.mark.asyncio
+async def test_v3_executions_prep(test_db_path, test_project_root):
+    """Test that _save_prep_result writes 'prepped' to v3_executions."""
+    from research_paper_analysis_v3.hooks import V3Hooks
+
+    hooks = V3Hooks(project_root=test_project_root, db_path=test_db_path)
+
+    context = {
+        "arxiv_id": "2401.99999",
+        "docling_json_path": "data/papers_docling_json/2401.99999.json",
+    }
+    await hooks._save_prep_result(context)
+
+    # Check DB
+    conn = sqlite3.connect(test_db_path)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT * FROM v3_executions WHERE paper_id = ?",
+        ("2401.99999",),
+    ).fetchone()
+    assert row is not None, "No row in v3_executions"
+    assert row["status"] == "prepped", f"Status mismatch: {row['status']}"
+    assert "papers_docling_json" in row["result_path"]
+    conn.close()

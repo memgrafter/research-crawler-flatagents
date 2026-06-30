@@ -6,6 +6,7 @@ Kaggle/GCS.
 """
 
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -83,6 +84,19 @@ async def test_prep_e2e_attention_is_all_you_need(test_project_root, test_db_pat
     doc_text_lower = doc_text.lower()
     assert "attention" in doc_text_lower, "Expected 'attention' in extracted text"
     assert "transformer" in doc_text_lower, "Expected 'transformer' in extracted text"
+
+    # Verify v3_executions DB was updated with prepped status
+    conn = sqlite3.connect(test_db_path)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT * FROM v3_executions WHERE paper_id = ?",
+        (ARXIV_ID,),
+    ).fetchone()
+    assert row is not None, "No row in v3_executions"
+    assert row["status"] == "prepped", f"Status mismatch: {row['status']}"
+    assert row["result_path"] is not None, "result_path is None"
+    assert "papers_docling_json" in row["result_path"], f"Unexpected result_path: {row['result_path']}"
+    conn.close()
 
 
 def _extract_text_from_docling(doc_data: dict) -> str:

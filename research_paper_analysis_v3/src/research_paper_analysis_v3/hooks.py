@@ -5,6 +5,7 @@ Implements custom FlatMachine actions for the analyzer pipeline:
 Prep actions (prep_machine.yml):
 - download_pdf              — 3-tier PDF download (GCS → export.arxiv.org → arxiv.org)
 - extract_docling           — convert PDF to DoclingDocument JSON
+- save_prep_result          — write prep outcome to v3_executions DB
 
 KV cache actions (kv_cache_machine.yml):
 - warmup_kv_cache           — warm up KV cache with paper text (later: pin via proxy)
@@ -138,6 +139,7 @@ class V3Hooks(LoggingHooks):
             # Prep actions
             "download_pdf": self._download_pdf,
             "extract_docling": self._extract_docling,
+            "save_prep_result": self._save_prep_result,
             # KV cache
             "mark_cache_pinned": self._mark_cache_pinned,
             # Analyzer actions
@@ -340,6 +342,41 @@ class V3Hooks(LoggingHooks):
 
         logger.info("Docling conversion done: %s (%d bytes)", json_path, json_path.stat().st_size)
         context["docling_json_path"] = str(json_path)
+        return context
+
+    async def _save_prep_result(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Write prep outcome to v3_executions DB.
+
+        Sets status='prepped' with docling_json_path. Completes the
+        prep → analyzer handoff so the scheduler can route papers.
+        """
+        arxiv_id = self._norm(context.get("arxiv_id") or context.get("paper_id"))
+        if not arxiv_id:
+            raise ValueError("No arxiv_id in context for save_prep_result")
+
+        docling_json_path = self._norm(context.get("docling_json_path"))
+
+        try:
+            conn = self._db()
+            conn.execute(
+                """
+                INSERT INTO v3_executions (paper_id, status, result_path, updated_at)
+                VALUES (?, 'prepped', ?, ?)
+                ON CONFLICT(paper_id) DO UPDATE SET
+                    status = 'prepped',
+                    result_path = excluded.result_path,
+                    error = NULL,
+                    updated_at = excluded.updated_at
+                """,
+                (arxiv_id, docling_json_path, _utc_now_iso()),
+            )
+            conn.commit()
+            logger.info("v3_executions: %s → prepped (docling=%s)", arxiv_id, docling_json_path)
+        except Exception:
+            logger.exception("Failed to update v3_executions for %s", arxiv_id)
+        finally:
+            conn.close()
+
         return context
 
     # ------------------------------------------------------------------

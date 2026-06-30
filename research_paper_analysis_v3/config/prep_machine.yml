@@ -33,6 +33,14 @@ data:
       action: extract_docling
       on_error: prep_failed
       transitions:
+        - to: save_prep_result
+
+    # ── Write prep outcome to DB ───────────────────────────────────────
+    save_prep_result:
+      hooks: v3-hooks
+      action: save_prep_result
+      on_error: prep_failed
+      transitions:
         - to: done
 
     # ── Final states ───────────────────────────────────────────────────
