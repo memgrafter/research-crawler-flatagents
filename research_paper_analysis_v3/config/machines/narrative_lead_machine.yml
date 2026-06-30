@@ -25,6 +25,7 @@ data:
         backoffs:
           - 12
           - 24
+      on_error: section_failed
       input:
         mode: narrative_lead
         title: context.title
@@ -38,6 +39,12 @@ data:
         author_uncertainties: output.author_uncertainties
       transitions:
         - to: done
+    section_failed:
+      type: final
+      output:
+        narrative_lead: null
+        author_uncertainties: null
+        _error: context.last_error
     done:
       type: final
       output:

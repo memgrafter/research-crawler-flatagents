@@ -21,6 +21,7 @@ data:
         backoffs:
           - 12
           - 24
+      on_error: section_failed
       input:
         mode: why_mechanism
         title: context.title
@@ -30,6 +31,11 @@ data:
         why_mechanism: output.content
       transitions:
         - to: done
+    section_failed:
+      type: final
+      output:
+        content: null
+        _error: context.last_error
     done:
       type: final
       output:

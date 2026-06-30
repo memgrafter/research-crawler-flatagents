@@ -104,9 +104,32 @@ async def test_prep_to_analyzer_e2e(test_project_root, test_db_path):
         },
     )
 
-    # Verify analyzer received the cleaned paper text and attempted processing.
-    # LLM calls may fail in CI environments, so we verify data flow, not LLM success.
+    # Verify analyzer received the cleaned paper text and produced a report
     assert analyzer_result.get("arxiv_id") == ARXIV_ID, f"Analyzer lost arxiv_id: {analyzer_result}"
+
+    # Verify quality gate passed — all fan-out sections must have content
+    assert analyzer_result.get("quality_gate_decision") == "PASS", \
+        f"Quality gate failed: {analyzer_result.get('quality_gate_decision')}, error: {analyzer_result.get('error')}"
+
+    # Verify result file was written
+    result_path = analyzer_result.get("result_path")
+    assert result_path is not None, "No result_path in analyzer output"
+    report_file = Path(result_path)
+    assert report_file.exists(), f"Report file missing: {result_path}"
+    report_content = report_file.read_text()
+    assert len(report_content) > 500, f"Report too short: {len(report_content)} chars"
+
+    # Verify key sections are present in the report
+    required_sections = [
+        "What This Paper Did",
+        "Method",
+        "Key Results",
+        "Why It Works",
+        "Open Questions",
+        "Failure Modes & Limitations",
+    ]
+    for section in required_sections:
+        assert section in report_content, f"Missing section: {section}"
 
     # Verify disk artifacts exist
     pdf_path = test_project_root / "data" / "1706.03762.pdf"
@@ -115,7 +138,7 @@ async def test_prep_to_analyzer_e2e(test_project_root, test_db_path):
     docling_path = test_project_root / "data" / "papers_docling_json" / "1706.03762.json"
     assert docling_path.exists(), f"Docling JSON not found: {docling_path}"
 
-    # Verify v3_executions DB has the full lifecycle
+    # Verify v3_executions DB has the full lifecycle (done status)
     conn = sqlite3.connect(test_db_path)
     conn.row_factory = sqlite3.Row
     row = conn.execute(
@@ -123,6 +146,5 @@ async def test_prep_to_analyzer_e2e(test_project_root, test_db_path):
         (ARXIV_ID,),
     ).fetchone()
     assert row is not None, "No row in v3_executions"
-    # Status depends on analyzer outcome — LLM calls may fail in CI
-    assert row["status"] in ("done", "prepped", "failed"), f"Unexpected status: {row['status']}"
+    assert row["status"] == "done", f"Expected 'done' status, got: {row['status']}"
     conn.close()
