@@ -1,6 +1,6 @@
-
+env.local
 
 data/
 .locks/
 .checkpoints/
-env.local
+models/
