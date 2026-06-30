@@ -1,7 +1,7 @@
 ---
 id: rpav-1xkn
 status: open
-deps: [rpav-e50g]
+deps: [rpav-e50g, rpav-op1z]
 links: []
 created: 2026-06-13T06:48:02Z
 type: feature
