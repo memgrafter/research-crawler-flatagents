@@ -19,7 +19,7 @@ GGUF_FILE="Jina-Embeddings-v5-Text-Nano-212M-Q8_0.gguf"
 MODEL_PATH="${MODEL_DIR}/${MODEL_SUBDIR}/${GGUF_FILE}"
 
 # Defaults
-HOST="127.0.0.1"
+HOST="0.0.0.0"
 PORT=8083
 DEVICE="CUDA1"
 
